@@ -12,7 +12,8 @@ Start with [RUN-ME.md](RUN-ME.md). See [SECURITY.md](SECURITY.md) for the threat
 New installations use Apple Photos only, OpenStreetMap, a seven-day range and three visits.
 No Google Takeout, CSV, Google key or billing account is needed. Discovery uses existing local
 Apple Photos food labels and also exposes unlabelled/no-GPS images. You define each visit's
-photo group before matching. Only that selected lookup sends coordinates or a name query
+photo group before matching. Existing Photos venue/city names are used before generic nearby
+search, with original Unicode spelling and location context preserved. Only that selected lookup sends coordinates or a name query
 to external OSM services. Restaurant suggestions always require approval and can be corrected
 by name. If OSM lacks the restaurant, you may supply its full name and branch address for
 review; this remains separate from an observed Beli identity. Food labels and GPS are

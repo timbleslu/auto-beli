@@ -69,3 +69,31 @@ def pilot_capabilities(*, udid: str, ios_version: str, bundle_id: str,
             'appium:disableAutomaticScreenshots': True,
             'appium:newCommandTimeout': 3600,
             'appium:waitForIdleTimeout': 5}
+
+
+def connected_usb_device(expected_udid=None):
+    """Fresh, read-only USB observation; cached inventory is never connection proof.
+
+    Returns private device metadata to the local caller. Do not log identifiers.
+    """
+    import tempfile
+    env = os.environ.copy()
+    developer = Path('/Applications/Xcode.app/Contents/Developer')
+    if developer.is_dir():
+        env['DEVELOPER_DIR'] = str(developer)
+    with tempfile.TemporaryDirectory(prefix='auto-beli-device-') as folder:
+        output = Path(folder) / 'devices.json'
+        result = subprocess.run(['xcrun', 'devicectl', 'list', 'devices',
+                                 '--json-output', str(output)],
+                                capture_output=True, text=True, env=env, timeout=30)
+        if result.returncode or not output.exists():
+            raise RuntimeError('Xcode could not check the USB connection')
+        devices = json.loads(output.read_text()).get('result', {}).get('devices', [])
+    wired = [d for d in devices if d.get('connectionProperties', {}).get('transportType') == 'wired']
+    if len(wired) != 1:
+        raise RuntimeError('Connect and unlock exactly one iPhone over USB before starting')
+    device = wired[0]
+    udid = device.get('hardwareProperties', {}).get('udid')
+    if not udid or (expected_udid is not None and udid != expected_udid):
+        raise RuntimeError('The connected device does not match the configured trial iPhone')
+    return device

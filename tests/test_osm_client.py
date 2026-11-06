@@ -189,3 +189,13 @@ def test_overpass_outage_is_not_repeated_for_every_visit(monkeypatch):
     c=_client(handler)
     c.nearby_food(40.0,-73.0);c.nearby_food(41.0,-74.0)
     assert counts=={'overpass':1,'fallback':2}
+
+
+def test_name_search_uses_location_context_and_preserves_unicode():
+    def handler(request):
+        assert request.url.params['q']=='Café Élan, Test City'
+        assert request.url.params['bounded']=='0'  # preference, not false certainty/exclusion
+        assert len(request.url.params['viewbox'].split(','))==4
+        assert request.url.params['addressdetails']=='1'
+        return httpx.Response(200,json=[])
+    assert _client(handler).text_search_context('Café Élan, Test City',40,-73)==[]

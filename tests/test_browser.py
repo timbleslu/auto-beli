@@ -95,7 +95,10 @@ def test_photo_first_discovery_keeps_selections_and_all_group_photos(browser):
     from test_discovery import assets, Provider, discovery_app
     sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     origin=f'http://127.0.0.1:{port}'
-    provider=Provider();app=discovery_app(provider=provider,photos=assets(9),origin=origin)
+    from dataclasses import replace
+    photos=assets(9)
+    photos[0]=replace(photos[0],venue_hints=(PAYLOAD,),city_hint='Test City')
+    provider=Provider();app=discovery_app(provider=provider,photos=photos,origin=origin)
     server=uvicorn.Server(uvicorn.Config(app,log_level='error',access_log=False,proxy_headers=False))
     thread=threading.Thread(target=server.run,kwargs={'sockets':[sock]},daemon=True);thread.start()
     deadline=time.monotonic()+5
@@ -108,6 +111,8 @@ def test_photo_first_discovery_keeps_selections_and_all_group_photos(browser):
         expect(page.locator('#discovery')).to_be_visible()
         expect(page.locator('#photo-grid .asset')).to_have_count(5)
         assert not provider.calls
+        expect(page.locator('#photo-grid')).to_contain_text(PAYLOAD)
+        assert page.evaluate('globalThis.__xss === undefined')
         page.locator('#photo-grid input').first.check()
         page.get_by_label('Show photos').select_option('all')
         expect(page.locator('#photo-grid .asset')).to_have_count(9)

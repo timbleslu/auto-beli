@@ -163,3 +163,40 @@ def test_group_removal_cannot_race_an_inflight_lookup():
         release.set();t.join(5)
     assert not t.is_alive() and results==[200]
     assert len(c.get('/api/queue').json()['visits'])==2
+
+
+def test_cached_photos_venue_and_city_are_used_before_generic_nearby_search():
+    class ContextProvider(Provider):
+        def text_search_context(self,query,lat,lon):
+            self.calls.append(('context',query,lat,lon));return self.result()
+        def nearby_food(self,*args,**kwargs):
+            raise AssertionError('Generic nearby search should not replace a successful venue hint')
+    photo=PhotoAsset('hinted',datetime(2026,10,24,12),40,-73,True,True,False,
+                     venue_hints=('Cafe\u0301 E\u0301lan',),city_hint='Test City')
+    p=ContextProvider();result=match_selection([photo],['hinted'],p)
+    assert p.calls==[('context','Café Élan, Test City',40,-73)]
+    assert result.status=='ambiguous' and result.match is None
+    assert result.raw.venue_hints==['Cafe\u0301 E\u0301lan']
+    assert 'not verified identities' in result.match_note
+
+
+def test_ascii_name_uses_cached_spelling_and_city_without_gps():
+    photo=PhotoAsset('hinted',datetime(2026,10,24,12),None,None,True,True,False,
+                     venue_hints=('Café Élan',),city_hint='Test City')
+    p=Provider();result=match_selection([photo],['hinted'],p,'cafe elan')
+    assert p.calls==[('name','Café Élan, Test City')]
+    assert result.raw.lat is None and result.status=='ambiguous'
+
+
+def test_canonical_equivalent_hints_count_once_and_remain_stable():
+    photo=PhotoAsset('hinted',datetime(2026,10,24,12),40,-73,True,True,False,
+        venue_hints=('Cafe\u0301 E\u0301lan','Café Élan','Another restaurant'),city_hint='Test City')
+    result=match_selection([photo],['hinted'],Provider())
+    assert result.raw.venue_hints==['Cafe\u0301 E\u0301lan','Another restaurant']
+
+
+def test_explicit_city_correction_is_not_overridden_by_cached_photo_city():
+    photo=PhotoAsset('hinted',datetime(2026,10,24,12),None,None,True,True,False,
+                     venue_hints=('Café Élan',),city_hint='Old City')
+    p=Provider();match_selection([photo],['hinted'],p,'Café Élan, Correct City')
+    assert p.calls==[('name','Café Élan, Correct City')]

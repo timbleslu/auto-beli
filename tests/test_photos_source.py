@@ -100,3 +100,17 @@ def test_inventory_keeps_no_gps_images_and_uses_only_existing_local_labels(monke
     assert next(p for p in items if p.id=='no-gps').lat is None
     assert db.seen_kwargs['images'] is True and db.seen_kwargs['movies'] is False
     assert db.seen_kwargs['to_date']==datetime(2026,10,30,0)
+
+
+def test_inventory_reads_cached_venue_hints_but_does_not_query_home_place_names(monkeypatch):
+    from types import SimpleNamespace
+    photo=FakePhoto('hint',40,-73,datetime(2026,10,24,12));photo.labels=['Food']
+    photo.search_info=SimpleNamespace(venues=['Café Élan'],city='Test City')
+    photo.place=SimpleNamespace(ishome=False)
+    source,_=_source_with([photo],since=date(2026,10,23),until=date(2026,10,29))
+    monkeypatch.setattr(source,'thumbnail_path',lambda ref:'synthetic.jpg')
+    monkeypatch.setattr(source,'original_path',lambda ref:None)
+    asset=source.inventory()[0]
+    assert asset.venue_hints==('Café Élan',) and asset.city_hint=='Test City'
+    photo.place.ishome=True
+    assert source.inventory()[0].venue_hints==()

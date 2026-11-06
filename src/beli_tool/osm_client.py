@@ -82,6 +82,16 @@ class OsmClient:
             _parse_nominatim,
         )
 
+    def text_search_context(self, query: str, lat: float, lon: float, radius_m: int = 3000):
+        """Bias name results to the selected visit; don't silently exclude a corrected address."""
+        delta_lat = radius_m / 111_320
+        delta_lon = radius_m / (111_320 * max(math.cos(math.radians(lat)), 0.01))
+        params = {"q":query, "format":"jsonv2", "limit":10, "addressdetails":1,
+                  "bounded":0,
+                  "viewbox":f"{lon-delta_lon},{lat+delta_lat},{lon+delta_lon},{lat-delta_lat}"}
+        key = 'osm:context-name:' + json.dumps(params, sort_keys=True)
+        return self._fetch(key, lambda attempt:self._http.get(_NOMINATIM,params=params), _parse_nominatim)
+
     def nearby_food(self, lat: float, lon: float, radius_m: int = 60) -> list[dict]:
         q = (
             "[out:json][timeout:8];("

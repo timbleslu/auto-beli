@@ -17,6 +17,8 @@ class RawPlace(BaseModel):
     photo_refs: list[str] = Field(default_factory=list)
     photo_count: int = 0
     source_list: str | None = None
+    venue_hints: list[str] = Field(default_factory=list)
+    city_hint: str | None = None
 
 
 class PlaceCandidate(BaseModel):

@@ -119,9 +119,24 @@ class OsxPhotosSource:
             try:labels=p.labels or []
             except (AttributeError,KeyError):labels=[]
             screenshot=bool(getattr(p,'screenshot',False))
+            hints=(); city=None
+            try:
+                info=getattr(p,'search_info',None)
+                place=getattr(p,'place',None)
+                # Don't turn Photos' home-place metadata into an automatic business query.
+                if not getattr(place,'ishome',False):
+                    names=getattr(info,'venues',[]) or []
+                    hints=tuple(dict.fromkeys(str(n).strip() for n in names
+                        if isinstance(n,str) and n.strip() and len(n)<=200))[:10]
+                city=(getattr(info,'city',None) or '').strip()[:120] or None
+            except Exception:
+                # Optional metadata can be absent/unreadable; keep the image visible
+                # and fall back to GPS/manual search, without logging private text.
+                hints=(); city=None
             assets.append(PhotoAsset(id=p.uuid,taken=p.date,lat=loc[0],lon=loc[1],
                 food=food_hint(labels,screenshot),preview_available=self.thumbnail_path(p.uuid) is not None,
-                original_available=self.original_path(p.uuid) is not None,screenshot=screenshot))
+                original_available=self.original_path(p.uuid) is not None,screenshot=screenshot,
+                venue_hints=hints,city_hint=city))
         return sorted(assets,key=lambda a:a.taken,reverse=True)
 
     def _asset(self, uuid):

@@ -87,3 +87,10 @@ branch addresses are rendered as text and explicitly labelled unverified by OSM/
 same photo-window, session, CSRF, group-limit and approved-progress guards apply. Entering
 such a restaurant neither authorizes an upload nor marks a Beli identity/ranking verified.
 Draft removals and lookups share a lock to prevent a returned group racing an in-flight lookup.
+
+Photo venue/city hints come from existing local Photos metadata. Only a user-requested selected
+visit lookup can send these hints/location context to the matching provider; images remain local.
+Cached home venue names are not used as automatic business-name hints. All hints remain
+unverified and are rendered as text. Unicode normalization is used for query equivalence without
+interpolating names into executable selectors or handlers. USB readiness must come from a fresh
+Xcode observation, never a cached device JSON; the configured trial device must match.

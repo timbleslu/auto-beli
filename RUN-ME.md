@@ -37,9 +37,11 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
    missing. Use All images, Other / unlabelled, or Without GPS to find omitted pictures.
    The inventory includes all visible still images in your chosen dates; hidden assets and videos
    are excluded. The three-visit limit does not truncate discovery.
-7. Select pictures from ONE visit. Click “Find restaurants for selected photos.” This sends
-   only the selected visit's coordinates to OSM. Photos themselves stay local. If the photos
-   have no GPS, or suggestions are wrong, enter the restaurant name with city/address and
+7. Select pictures from ONE visit. Click “Find restaurants for selected photos.” Existing
+   Photos venue/city hints are tried first; name searches are biased to the selected visit's
+   location. When those hints are absent/unhelpful, nearby suggestions remain available.
+   The selected lookup can send venue/city names and GPS to OSM. Images stay local. If the photos
+   have no usable venue/GPS hints, or suggestions are wrong, enter the restaurant name with city/address and
    request a name search. Groups spanning more than three hours must be split into separate visits.
 8. Review the restaurant's full branch address. No restaurant is accepted automatically,
    including a single nearby result. OSM coverage is incomplete and may not contain your restaurant.

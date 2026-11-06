@@ -49,6 +49,7 @@ let mappingDrafts = new Map();
 function card(item) {
   const card = el('section', null, 'card body');
   card.append(el('h3', item.name || 'Choose a restaurant'), el('p', item.visit_date));
+  if (item.venue_hints?.length) card.append(el('p', 'Photos venue hints (unverified): ' + item.venue_hints.join(' · '), 'hint'));
   if (item.match_note) card.append(el('p', item.match_note, 'notice'));
   if (item.legacy_record) card.append(el('p', 'An old local Added/Skip record exists. Check Beli before repeating any action.', 'notice'));
   const draft = mappingDrafts.get(item.visit_id);
@@ -173,6 +174,7 @@ function renderDiscovery() {
     box.append(image(a.id), choice.label);
     box.append(el('p', (a.likely_food ? 'Local food label' : 'Unlabelled / other') +
       (a.has_location ? ' · GPS available' : ' · No GPS — name search available'), 'hint'));
+    if (a.venue_hints?.length) box.append(el('p', 'Photos suggests: ' + a.venue_hints.join(' · ') + (a.city_hint ? ' — ' + a.city_hint : ''), 'hint'));
     if (a.screenshot) box.append(el('p', 'Screenshot — not suggested as a meal photo', 'hint'));
     if (!a.preview_available) box.append(el('p', 'Preview unavailable. Check this image in Photos.', 'hint'));
     if (usedPhotos.has(a.id)) box.append(el('p', 'Already in a review group', 'hint'));

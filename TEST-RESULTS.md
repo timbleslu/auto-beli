@@ -31,11 +31,11 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 ## Checks completed
 
 - Before changes: original 110 tests passed.
-- Updated non-browser tests: 124 passed. Authentication, CSRF, queue validation, atomic
+- Updated non-browser tests: 131 passed. Authentication, CSRF, queue validation, atomic
   approval, manual status distinctions, partial-photo persistence, restart/pause/stop,
   explicit photo waiver, separate visits, exclusive process lock, legacy migration,
   private backups, metadata stripping and thumbnail rejection are covered.
-- Full current Python suite: **134 passed**, one upstream test-client deprecation warning.
+- Full current Python suite: **141 passed**, one upstream test-client deprecation warning.
 - Real Chromium 156.0.8078.4 via Playwright 1.64.1: 9 tests passed. Includes isolated
   reproduction of the exact old entity-decoding XSS, followed by secure DOM rendering
   and batch/manual-flow tests with CSP ON and OFF, malicious strings, punctuation and Unicode.
@@ -66,6 +66,15 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 - Missing-OSM-restaurant tests cover user-supplied names/addresses, a separate `user:`
   namespace, retained photo groups, CSRF protection, no automatic approval/provider call,
   unverified Beli state, injected text safety, and lookup/removal concurrency.
+- Broader lookup investigation found that a user-confirmed restaurant was present in OSM:
+  its full Unicode name plus city returned the correct branch, while the earlier bare-name
+  search had missed it. The selected photo also contained a matching cached venue hint which
+  the initial implementation ignored. A revised automatic lookup using Photos' venue/city
+  hints returned the confirmed branch among two candidates. This is ONE real provider case,
+  not a measured accuracy claim and not verification of the Beli entry.
+- Synthetic regressions cover cached venue hints, city/location-biased name queries, canonical
+  Unicode equivalents, missing-GPS name lookup, non-execution of venue text, suppression of
+  cached home venue names, and rejection of stale/disconnected/wrong USB device state.
 - The refreshed local review uses a native pairing dialog. Real previews are shown only to the
   user in their local browser; no private screenshot or photo was uploaded to AI debugging.
 
