@@ -138,3 +138,43 @@ def test_photo_first_discovery_keeps_selections_and_all_group_photos(browser):
         assert len(provider.calls)==2
     finally:
         page.close();server.should_exit=True;thread.join(timeout=5);sock.close()
+
+
+def test_missing_osm_restaurant_can_be_supplied_without_false_verification(browser):
+    from test_discovery import assets, Provider, discovery_app
+    class EmptyProvider(Provider):
+        def result(self):return []
+    sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+    origin=f'http://127.0.0.1:{port}';provider=EmptyProvider()
+    app=discovery_app(provider=provider,photos=assets(1),origin=origin)
+    server=uvicorn.Server(uvicorn.Config(app,log_level='error',access_log=False,proxy_headers=False))
+    thread=threading.Thread(target=server.run,kwargs={'sockets':[sock]},daemon=True);thread.start()
+    deadline=time.monotonic()+5
+    while not server.started and time.monotonic()<deadline:time.sleep(.01)
+    assert server.started
+    page=browser.new_page()
+    try:
+        page.goto(origin);page.locator('#code').fill(app.state.pairing_code)
+        page.get_by_role('button',name='Connect',exact=True).click()
+        page.locator('#photo-grid input').first.check()
+        page.get_by_label('Restaurant name, city or address (optional)').fill('Missing restaurant, city')
+        page.get_by_role('button',name='Find restaurants for selected photos').click()
+        expect(page.locator('#message')).to_contain_text('Visit ready')
+        expect(page.get_by_label('Include this visit in the batch')).to_be_disabled()
+        page.locator('#root summary').click()
+        name='Mắm \' & 東京';address='1 "<img src=x onerror=globalThis.__xss=true>" Street, City'
+        page.get_by_label('Full restaurant name',exact=True).fill(name)
+        page.get_by_label('Branch address and city',exact=True).fill(address)
+        page.get_by_role('button',name='Use this restaurant for review').click()
+        expect(page.locator('#root h3')).to_have_text(name)
+        expect(page.locator('#root')).to_contain_text('not verified by OSM or Beli')
+        expect(page.get_by_label('Include this visit in the batch')).to_be_enabled()
+        page.get_by_label('Restaurant and branch').select_option(index=1)
+        page.get_by_label('Include this visit in the batch').check()
+        page.get_by_role('button',name='Approve selected mappings').click()
+        expect(page.locator('#message')).to_have_text('Batch approved and stored on this Mac.')
+        expect(page.locator('#worklist')).to_contain_text('ranking pending')
+        assert len(provider.calls)==1  # user-supplied mapping made no provider request
+        assert page.evaluate('globalThis.__xss === undefined')
+    finally:
+        page.close();server.should_exit=True;thread.join(timeout=5);sock.close()

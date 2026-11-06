@@ -80,7 +80,18 @@ function card(item) {
       await api('/api/discovery-match', {photos:item.photos, query:query.value.trim()});
     });
     query.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); search.click(); } });
-    tools.append(label, search, button('Return group to photo selection', () => api('/api/remove-match', {visit_id:item.visit_id})));
+    const manual = el('details');
+    manual.append(el('summary', 'Restaurant missing from OSM? Enter its branch for review'));
+    manual.append(el('p', 'This records your identification. It does not verify the restaurant in Beli or approve an upload.'));
+    const nameLabel = el('label', 'Full restaurant name');
+    const name = el('input'); name.type = 'text'; name.maxLength = 200; nameLabel.append(name);
+    const addressLabel = el('label', 'Branch address and city');
+    const address = el('input'); address.type = 'text'; address.maxLength = 500; addressLabel.append(address);
+    manual.append(nameLabel, addressLabel, button('Use this restaurant for review', async () => {
+      if (!name.value.trim() || !address.value.trim()) throw new Error('Enter the full name and branch address/city.');
+      await api('/api/user-restaurant', {photos:item.photos, name:name.value.trim(), address:address.value.trim()});
+    }));
+    tools.append(label, search, manual, button('Return group to photo selection', () => api('/api/remove-match', {visit_id:item.visit_id})));
     card.append(tools);
   }
   selections.set(item.visit_id, {include:include.input, select, photos, noPhotos:noPhotos.input});

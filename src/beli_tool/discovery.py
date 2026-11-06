@@ -1,6 +1,8 @@
 """Photo-first discovery: local labels suggest food; humans define each visit."""
 from __future__ import annotations
 from dataclasses import dataclass
+import hashlib
+import json
 from datetime import datetime
 from math import isfinite
 
@@ -36,8 +38,7 @@ def food_hint(labels, screenshot=False):
     return not screenshot and bool({str(v).casefold().strip() for v in labels or []} & _FOOD)
 
 
-def match_selection(assets: list[PhotoAsset], ids: list[str], client, query=''):
-    query = query.strip()
+def _photo_group(assets: list[PhotoAsset], ids: list[str], name=None):
     if not ids or len(ids) != len(set(ids)) or len(ids)>100:
         raise ValueError('Choose 1–100 different photos from one visit')
     by_id={a.id:a for a in assets}
@@ -49,6 +50,16 @@ def match_selection(assets: list[PhotoAsset], ids: list[str], client, query=''):
     located=[a for a in selected if a.lat is not None and a.lon is not None]
     lat=sum(a.lat for a in located)/len(located) if located else None
     lon=sum(a.lon for a in located)/len(located) if located else None
+    raw = RawPlace(source='photos', name=name, lat=lat, lon=lon,
+                   visit_date=selected[0].taken.date(), photo_count=len(selected),
+                   photo_ref=selected[0].id, photo_refs=[a.id for a in selected])
+    return raw, located
+
+
+def match_selection(assets: list[PhotoAsset], ids: list[str], client, query=''):
+    query = query.strip()
+    raw, located = _photo_group(assets, ids, query or None)
+    lat, lon = raw.lat, raw.lon
     if not query:
         if not located:
             raise ValueError('These photos have no GPS. Enter the restaurant name you recognize, or leave them pending.')
@@ -57,9 +68,6 @@ def match_selection(assets: list[PhotoAsset], ids: list[str], client, query=''):
         results=client.nearby_food(lat,lon,radius_m=150)
     else:
         results=client.text_search(query.strip())
-    raw=RawPlace(source='photos',name=query.strip() or None,lat=lat,lon=lon,
-                 visit_date=selected[0].taken.date(),photo_count=len(selected),
-                 photo_ref=selected[0].id,photo_refs=[a.id for a in selected])
     candidates=[];seen=set()
     for r in results:
         if not {'restaurant','food','cafe','bar','bakery','meal_takeaway'} & set(r.get('types',[])):
@@ -81,3 +89,16 @@ def match_selection(assets: list[PhotoAsset], ids: list[str], client, query=''):
     if any(r.get('_requires_review') for r in results):note+=' OSM fallback results are incomplete.'
     return MatchedPlace(bucket='been',status='ambiguous' if candidates else 'no_match',
                         raw=raw,candidates=candidates,match_note=note)
+
+
+def user_restaurant(assets: list[PhotoAsset], ids: list[str], name: str, address: str):
+    """User testimony, not an OSM or Beli identity. No external request is made."""
+    name, address = name.strip(), address.strip()
+    if not name or not address:
+        raise ValueError('Provide the full restaurant name and branch address/city')
+    raw, _ = _photo_group(assets, ids, name)
+    identity = hashlib.sha256(json.dumps([name, address], ensure_ascii=False).encode()).hexdigest()
+    candidate = PlaceCandidate(place_id='user:' + identity, name=name, address=address,
+                               category='restaurant')
+    return MatchedPlace(bucket='been', status='ambiguous', raw=raw, candidates=[candidate],
+        match_note='Name and address supplied by you; not verified by OSM or Beli. Check the exact branch in Beli before ranking or attaching photos.')

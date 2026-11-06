@@ -81,3 +81,9 @@ the in-memory window before its coordinates/name query can reach OSM. External r
 unconfirmed even for a single candidate. Unapproved groups persist in a new additive SQLite
 table; approved selections cannot be removed or overwritten through draft editing. Photo UUIDs
 are allowlisted before resolving image paths, including restored approved selections.
+
+User-supplied restaurant drafts use a separate `user:` identifier namespace. Their names and
+branch addresses are rendered as text and explicitly labelled unverified by OSM/Beli. The
+same photo-window, session, CSRF, group-limit and approved-progress guards apply. Entering
+such a restaurant neither authorizes an upload nor marks a Beli identity/ranking verified.
+Draft removals and lookups share a lock to prevent a returned group racing an in-flight lookup.

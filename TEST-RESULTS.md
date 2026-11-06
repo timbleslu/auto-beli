@@ -31,12 +31,12 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 ## Checks completed
 
 - Before changes: original 110 tests passed.
-- Updated non-browser tests: 121 passed. Authentication, CSRF, queue validation, atomic
+- Updated non-browser tests: 124 passed. Authentication, CSRF, queue validation, atomic
   approval, manual status distinctions, partial-photo persistence, restart/pause/stop,
   explicit photo waiver, separate visits, exclusive process lock, legacy migration,
   private backups, metadata stripping and thumbnail rejection are covered.
-- Full current Python suite: **130 passed**, one upstream test-client deprecation warning.
-- Real Chromium 156.0.8078.4 via Playwright 1.64.1: 8 tests passed. Includes isolated
+- Full current Python suite: **134 passed**, one upstream test-client deprecation warning.
+- Real Chromium 156.0.8078.4 via Playwright 1.64.1: 9 tests passed. Includes isolated
   reproduction of the exact old entity-decoding XSS, followed by secure DOM rendering
   and batch/manual-flow tests with CSP ON and OFF, malicious strings, punctuation and Unicode.
 - Real TLS test: 1 passed. A temporary private CA validates the server; an untrusted
@@ -63,6 +63,9 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 - Tests prove no startup lookup, retention of no-GPS images, no six-photo truncation, explicit
   name corrections, persistence of unapproved groups, protection of approved groups, rejection
   of overlapping groups, and browser selection retention across filters/name corrections/reload.
+- Missing-OSM-restaurant tests cover user-supplied names/addresses, a separate `user:`
+  namespace, retained photo groups, CSRF protection, no automatic approval/provider call,
+  unverified Beli state, injected text safety, and lookup/removal concurrency.
 - The refreshed local review uses a native pairing dialog. Real previews are shown only to the
   user in their local browser; no private screenshot or photo was uploaded to AI debugging.
 

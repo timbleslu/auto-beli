@@ -43,8 +43,11 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
    request a name search. Groups spanning more than three hours must be split into separate visits.
 8. Review the restaurant's full branch address. No restaurant is accepted automatically,
    including a single nearby result. OSM coverage is incomplete and may not contain your restaurant.
-   Leave it pending if the correct branch cannot be identified. Use “Search this visit by name”
-   to replace wrong suggestions without losing the group's selected photos.
+   Use “Search this visit by name” to replace wrong suggestions without losing selected photos.
+   If OSM still has no entry and you recognize the visit, expand “Restaurant missing from OSM?”
+   and enter the full name plus branch address and city. “Use this restaurant for review” stores
+   your identification as an unverified draft; it neither approves photos nor verifies Beli.
+   Confirm that exact branch in Beli before acting. If you cannot identify it, leave it pending.
 9. Every selected image is shown in the group; there is no six-photo gallery cutoff. These
    user-selected pictures are checked in the draft approval so you don't need to select them twice.
    Uncheck any you do not want attached, or choose “Continue without photos.” Choose the correct

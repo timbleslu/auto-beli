@@ -102,3 +102,64 @@ def test_unapproved_group_can_be_returned_but_overlaps_cannot_duplicate_it():
     ident=c.get('/api/queue').json()['visits'][0]['visit_id']
     assert c.post('/api/remove-match',json={'visit_id':ident}).status_code==200
     assert c.post('/api/discovery-match',json={'photos':['2','3']}).status_code==200
+
+
+def test_user_restaurant_keeps_provider_and_beli_identity_separate_and_never_calls_provider():
+    from beli_tool.discovery import user_restaurant
+    p=Provider();photos=assets(1)
+    item=user_restaurant(photos,['0'],' Mắm 東京 ', ' 1 Test Street, Test City ')
+    assert item.status=='ambiguous' and item.match is None
+    assert item.candidates[0].place_id.startswith('user:')
+    assert item.candidates[0].name=='Mắm 東京'
+    assert 'not verified by OSM or Beli' in item.match_note
+    assert not p.calls
+    with pytest.raises(ValueError):user_restaurant(photos,['outside'],'Name','Address')
+    with pytest.raises(ValueError):user_restaurant(photos,['0'],'  ','Address')
+
+
+def test_user_supplied_branch_replaces_draft_without_approving_photos_or_verifying_beli():
+    p=Provider();c=connect(discovery_app(provider=p))
+    assert c.post('/api/discovery-match',json={'photos':['1']}).status_code==200
+    original=c.get('/api/queue').json()['visits'][0]
+    c.headers['Origin']='https://evil.test'
+    assert c.post('/api/user-restaurant',json={'photos':['1'],'name':'Name','address':'Address'}).status_code==403
+    c.headers['Origin']='http://127.0.0.1:8000'
+    count=len(p.calls)
+    request={'photos':['1'],'name':'User restaurant','address':'1 Test Street, Test City'}
+    assert c.post('/api/user-restaurant',json=request).status_code==200
+    rows=c.get('/api/queue').json()['visits'];assert len(rows)==1
+    assert rows[0]['visit_id']==original['visit_id']
+    assert rows[0]['candidates'][0]['place_id'].startswith('user:')
+    assert not c.get('/api/session').json()['visits']
+    assert len(p.calls)==count
+    m={'visit_id':rows[0]['visit_id'],'provider_id':rows[0]['candidates'][0]['place_id'],'photos':['1']}
+    assert c.post('/api/approve',json={'mappings':[m]}).status_code==200
+    saved=c.get('/api/session').json()['visits'][0]
+    assert saved['beli_identity'] is None and saved['ranking']=='pending'
+    assert saved['attachments']=={'1':'pending'}
+    assert c.post('/api/user-restaurant',json={**request,'address':'Another branch'}).status_code==409
+    assert c.get('/api/session').json()['visits'][0]['address']==request['address']
+
+
+def test_group_removal_cannot_race_an_inflight_lookup():
+    import threading
+    entered=threading.Event();release=threading.Event()
+    class SlowProvider(Provider):
+        slow=False
+        def nearby_food(self,*args,**kwargs):
+            if self.slow:
+                entered.set();assert release.wait(5)
+            return super().nearby_food(*args,**kwargs)
+    p=SlowProvider();c=connect(discovery_app(provider=p))
+    assert c.post('/api/discovery-match',json={'photos':['1']}).status_code==200
+    ident=c.get('/api/queue').json()['visits'][0]['visit_id']
+    p.slow=True;results=[]
+    t=threading.Thread(target=lambda:results.append(c.post('/api/discovery-match',json={'photos':['2']}).status_code))
+    t.start()
+    try:
+        assert entered.wait(3)
+        assert c.post('/api/remove-match',json={'visit_id':ident}).status_code==409
+    finally:
+        release.set();t.join(5)
+    assert not t.is_alive() and results==[200]
+    assert len(c.get('/api/queue').json()['visits'])==2

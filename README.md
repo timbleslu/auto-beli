@@ -14,7 +14,9 @@ No Google Takeout, CSV, Google key or billing account is needed. Discovery uses 
 Apple Photos food labels and also exposes unlabelled/no-GPS images. You define each visit's
 photo group before matching. Only that selected lookup sends coordinates or a name query
 to external OSM services. Restaurant suggestions always require approval and can be corrected
-by name. Food labels and GPS are suggestions, not proof of a restaurant visit.
+by name. If OSM lacks the restaurant, you may supply its full name and branch address for
+review; this remains separate from an observed Beli identity. Food labels and GPS are
+suggestions, not proof of a restaurant visit.
 
 Old `handled` completion rows remain intact. They are local records, not evidence that
 Beli saved anything. New photo visits are shown for reconciliation even when an old

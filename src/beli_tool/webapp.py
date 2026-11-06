@@ -37,6 +37,11 @@ class DiscoverReq(Strict):
     photos: list[str] = Field(min_length=1, max_length=100)
     query: str = Field(default='', max_length=200)
 
+class UserRestaurantReq(Strict):
+    photos: list[str] = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=200)
+    address: str = Field(min_length=1, max_length=500)
+
 class RemoveReq(Strict):
     visit_id: str = Field(max_length=64)
 
@@ -184,9 +189,8 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
                 'likely_food':sum(a.food for a in assets),
                 'without_gps':sum(a.lat is None or a.lon is None for a in assets)}
 
-    @app.post('/api/discovery-match')
-    def discover_match(req: DiscoverReq, csrf=Depends(sessions.guard)):
-        if match_photos is None:
+    def update_group(photos, make_match):
+        if discovery is None:
             raise HTTPException(404)
         if work.snapshot()['status'] == 'running':
             raise HTTPException(409, 'Pause before reviewing a new photo group')
@@ -195,14 +199,14 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
         try:
             # Validate selection before an external request, including membership.
             known = {a.id for a in discovery()}
-            if not set(req.photos) <= known:
+            if not set(photos) <= known:
                 raise ValueError('Selected photos are outside the current date window')
             done = {v['visit_id'] for v in work.snapshot()['visits'] if v['outcome'] != 'pending'}
             groups = [m for m in _items(state['queue']) if visit_id(m) not in done]
-            same_group = any(set(_refs(m)) == set(req.photos) for m in groups)
+            same_group = any(set(_refs(m)) == set(photos) for m in groups)
             if len(groups) >= max_groups and not same_group:
                 raise ValueError('Finish or return a group to discovery before adding more trial visits')
-            item = match_photos(req.photos, req.query)
+            item = make_match()
             work.save_match(item)
             state['queue'] = selected_queue()
         except ValueError as e:
@@ -213,15 +217,31 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
             lock.release()
         return {'ok':True}
 
+    @app.post('/api/discovery-match')
+    def discover_match(req: DiscoverReq, csrf=Depends(sessions.guard)):
+        if match_photos is None:
+            raise HTTPException(404)
+        return update_group(req.photos, lambda: match_photos(req.photos, req.query))
+
+    @app.post('/api/user-restaurant')
+    def supplied_restaurant(req: UserRestaurantReq, csrf=Depends(sessions.guard)):
+        from beli_tool.discovery import user_restaurant
+        return update_group(req.photos,
+            lambda: user_restaurant(discovery(), req.photos, req.name, req.address))
+
     @app.post('/api/remove-match')
     def remove_match(req: RemoveReq, csrf=Depends(sessions.guard)):
         if not discovery or work.snapshot()['status'] == 'running':
             raise HTTPException(409, 'Pause before editing unapproved groups')
+        if not lock.acquire(blocking=False):
+            raise HTTPException(409, 'Another matching operation is running')
         try:
             work.remove_match(req.visit_id)
+            state['queue'] = selected_queue()
         except ValueError as e:
             raise HTTPException(409,str(e)) from e
-        state['queue'] = selected_queue()
+        finally:
+            lock.release()
         return {'ok':True}
 
     @app.post('/api/approve')
