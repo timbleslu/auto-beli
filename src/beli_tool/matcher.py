@@ -74,6 +74,9 @@ def match_photo_cluster(
         )
     cands.sort(key=_dist)
 
+    if any(r.get("_requires_review") for r in food):
+        return MatchedPlace(bucket="been", status="ambiguous", raw=raw, candidates=cands,
+                            match_note="OSM nearby service was unavailable. These restaurant suggestions may omit closer places; confirm the name and branch manually.")
     near = [c for c in cands if _dist(c) <= ambiguous_radius_m]
     if len(near) >= 2:
         return MatchedPlace(bucket="been", status="ambiguous", raw=raw, candidates=near)

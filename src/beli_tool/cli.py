@@ -152,6 +152,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Photos-only Beli review assistant")
     parser.add_argument('command', choices=['run', 'doctor', 'export-approved'])
     parser.add_argument('--config', type=Path)
+    parser.add_argument('--pairing-dialog', action='store_true', help='Show pairing code only in a native Mac dialog')
     parser.add_argument('--phone-host', help="Mac LAN IP; requires trusted TLS certificate and key")
     parser.add_argument('--cert', type=Path)
     parser.add_argument('--key', type=Path)
@@ -196,7 +197,13 @@ def main(argv: list[str] | None = None) -> None:
             print('Photos or local state could not be opened. Open Photos, check the selected library and Full Disk Access for the app running this command. No private error details were logged.', file=sys.stderr)
             raise SystemExit(1)
         print(f"Open {origin} on {'your iPhone' if args.phone_host else 'this Mac'}")
-        print(f"One-time pairing code (expires in 10 minutes): {app.state.pairing_code}")
+        if args.pairing_dialog:
+            import threading
+            from beli_tool.desktop import pair_when_ready
+            threading.Thread(target=pair_when_ready, args=(origin, host, app.state.pairing_code), daemon=True).start()
+            print('The pairing code will appear in a private Mac dialog, not this output.')
+        else:
+            print(f"One-time pairing code (expires in 10 minutes): {app.state.pairing_code}")
         print('No verified Beli device automation is active. Use manual review controls.')
         print('Stop with Control-C. Progress stays in the local worklist.')
         try:

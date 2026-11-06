@@ -160,3 +160,20 @@ def test_sustained_timeouts_raise_actionable_message(monkeypatch):
 
     with pytest.raises(PlacesError, match="rerun in a few minutes"):
         _client(handler).nearby_food(1.0, 2.0)
+
+
+def test_overpass_rejection_uses_bounded_review_only_osm_fallback(monkeypatch):
+    monkeypatch.setattr('beli_tool.osm_client.time.sleep',lambda s:None)
+    seen=[]
+    def handler(request):
+        seen.append(request)
+        if request.url.host != 'nominatim.openstreetmap.org': return httpx.Response(406)
+        assert request.url.params['bounded']=='1'
+        assert request.url.params['q']=='[restaurant]'
+        return httpx.Response(200,json=[{'osm_type':'node','osm_id':1,'name':'Test café',
+            'type':'restaurant','display_name':'Test café, 1 Test Street','lat':'40.0','lon':'-73.0'}])
+    c=_client(handler,cache=PlacesCache())
+    results=c.nearby_food(40.0,-73.0)
+    assert results[0]['_requires_review'] is True
+    count=len(seen);assert c.nearby_food(40.0,-73.0)==results
+    assert len(seen)==count

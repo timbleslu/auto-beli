@@ -4,7 +4,9 @@ This is an implementation checkpoint. The requested end-to-end Beli experience i
 Baseline fork HEAD: `3cccf6a924fe34e3d7ca97489cc0f8907713ec23`.
 Branch: `codex/secure-photos-assistant`, repository `timbleslu/auto-beli`.
 Connected GitHub identity/owner `timbleslu` and admin/push permission were verified.
-The shell's current GitHub identity is `timstalily`; recheck/switch to timbleslu before pushing.
+The shell’s active identity is `timstalily` (no fork write permission). The existing timbleslu
+credential was privately verified with push permission and can be used per-command without changing
+the active account. Recheck remotes and identity before every push.
 Only origin exists, and both its URLs point to timbleslu/auto-beli.
 
 ## Environment actually observed
@@ -13,19 +15,24 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 - Python 3.13.15, Node 26.7.0, uv 0.12.5, Git 2.55.0.
 - Xcode 27.2, build 27B52. System selection is still CommandLineTools; use
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer for this project.
-- Physical USB iPhone 16 Pro detected after the user connected/unlocked/trusted it.
-  iOS version, Beli version and WebDriverAgent signing have NOT been verified.
-- Photos library path exists, but a direct header read returned macOS PermissionError.
-  User enabled Full Disk Access and needs to restart Codex. Relevant image counts,
-  geotags and iPhone availability remain UNVERIFIED.
+- Physical USB iPhone 16 Pro, iOS 27.0.1, Developer Mode enabled. Installed Beli 10.7.0
+  was identified read-only from the device (bundle identity is kept separate from OSM IDs).
+- WebDriverAgent 16.17.7 built successfully with the user-selected Apple development team.
+  First startup timed out; the diagnostic retry identified an untrusted Developer App certificate
+  on the iPhone. Physical trust is pending; no successful inspection session yet.
+- Full Disk Access works after the Codex restart. In the selected one-week window, 232 geotagged
+  dated images formed 62 time/location clusters. These counts are not confirmed restaurant visits.
+  No originals were locally downloaded for that window. Eleven previews were available across the
+  three trial clusters; iPhone availability of any chosen photo remains unverified.
 
 ## Checks completed
 
 - Before changes: original 110 tests passed.
-- Updated non-browser tests: 106 passed. Authentication, CSRF, queue validation, atomic
+- Updated non-browser tests: 112 passed. Authentication, CSRF, queue validation, atomic
   approval, manual status distinctions, partial-photo persistence, restart/pause/stop,
   explicit photo waiver, separate visits, exclusive process lock, legacy migration,
   private backups, metadata stripping and thumbnail rejection are covered.
+- Full current Python suite: **120 passed**, one upstream test-client deprecation warning.
 - Real Chromium 156.0.8078.4 via Playwright 1.64.1: 7 tests passed. Includes isolated
   reproduction of the exact old entity-decoding XSS, followed by secure DOM rendering
   and batch/manual-flow tests with CSP ON and OFF, malicious strings, punctuation and Unicode.
@@ -36,9 +43,18 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 - PyInstaller 6.22.3 produced an application bundle. Its ad-hoc signature is NOT Apple
   Developer ID signing or notarization. Packaged runtime/GUI usability are not verified.
 - Locked Python dependency audit: no known vulnerabilities reported.
-- Node audit: 18 moderate dependency entries, TWO root advisories, remain in bundled
-  driver copies. Root glob/minimatch overrides applied; Appium --version succeeds.
-  XCUITest 12.22.8 registers locally. No WebDriverAgent build or phone session ran.
+- Node audit: **zero known vulnerabilities** after removing dependency bundles from the
+  checksum-verified upstream driver and applying glob/minimatch security overrides. Clean npm ci
+  restored the dependency tree. See vendor provenance for the deterministic repackaging recipe.
+- A further two-line driver patch binds the legacy USB forwarder to loopback, in source and compiled
+  JavaScript. A real socket test passes (1 Node test); the RemoteXPC forwarder already defaults to
+  loopback. Appium status was reached at 127.0.0.1:4723 and its actual binding verified.
+- Overpass timed out/rejected the tiny public health query. A bounded Nominatim restaurant search
+  was reachable. The provider now falls back with review-only, explicitly incomplete suggestions.
+  The same three recent clusters produced two suggestion groups and one unmatched group. No
+  Beli action or photo upload was performed. Restaurant/photo batch approval is pending.
+- Local Mac review server is running with a native pairing dialog. Real previews are shown only
+  to the user in their local browser; no screenshots were captured or uploaded.
 
 One upstream FastAPI/Starlette test-client deprecation warning remains. It is not a
 vulnerability finding. Reproducible source locking does not imply bit-identical .app

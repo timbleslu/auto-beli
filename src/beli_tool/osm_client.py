@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import time
+import math
+
+from beli_tool.clustering import haversine_m
 
 import httpx
 
@@ -12,14 +15,14 @@ from beli_tool.places_client import PlacesError, _retry_delay
 # stretches of 504 under load, and a run of hundreds of lookups will hit one.
 _OVERPASS_URLS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
 ]
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 # All community-run servers with a roughly 1 request/second fair-use
 # policy. Nominatim also requires a real User-Agent naming the app.
 _USER_AGENT = f"beli-tool/{__version__} (github.com/timbleslu/auto-beli)"
 _MIN_INTERVAL_S = 1.0
-_MAX_RETRIES = 8
+_MAX_RETRIES = 2
 
 # OSM tag values mapped into the matcher's type vocabulary (see
 # matcher._FOOD_TYPES). Anything unmapped passes through as-is and the
@@ -61,7 +64,7 @@ class OsmClient:
         min_interval_s: float = _MIN_INTERVAL_S,
     ):
         self._http = client or httpx.Client(
-            timeout=30.0, headers={"User-Agent": _USER_AGENT}
+            timeout=httpx.Timeout(12.0, connect=5.0), headers={"User-Agent": _USER_AGENT}
         )
         self._cache = cache
         self._min_interval_s = min_interval_s
@@ -80,19 +83,34 @@ class OsmClient:
 
     def nearby_food(self, lat: float, lon: float, radius_m: int = 60) -> list[dict]:
         q = (
-            "[out:json][timeout:25];("
+            "[out:json][timeout:8];("
             f'nwr(around:{radius_m},{lat},{lon})["amenity"~"^({_AMENITY_RE})$"];'
             f'nwr(around:{radius_m},{lat},{lon})["shop"="bakery"];'
             ");out center 20;"
         )
         key = f"osm:nearby:{radius_m}:{round(lat, 6)}:{round(lon, 6)}"
-        return self._fetch(
-            key,
-            lambda attempt: self._http.post(
-                _OVERPASS_URLS[attempt % len(_OVERPASS_URLS)], data={"data": q}
-            ),
-            _parse_overpass,
-        )
+        try:
+            return self._fetch(
+                key,
+                lambda attempt: self._http.post(
+                    _OVERPASS_URLS[attempt % len(_OVERPASS_URLS)], data={"data": q}
+                ),
+                _parse_overpass,
+            )
+        except PlacesError:
+            # An explicitly bounded amenity search returns suggestions, not an
+            # exhaustive nearby list. Never promote these to confident matches.
+            delta_lat = radius_m / 111_320
+            delta_lon = radius_m / (111_320 * max(math.cos(math.radians(lat)), 0.01))
+            params = {"q": "[restaurant]", "format": "jsonv2", "limit": 10,
+                      "bounded": 1, "addressdetails": 1,
+                      "viewbox": f"{lon-delta_lon},{lat+delta_lat},{lon+delta_lon},{lat-delta_lat}"}
+            def parse(data):
+                results = _parse_nominatim(data)
+                return [{**r, "_requires_review": True} for r in results
+                        if haversine_m(lat, lon, r["geometry"]["location"]["lat"],
+                                       r["geometry"]["location"]["lng"]) <= radius_m]
+            return self._fetch(key, lambda attempt: self._http.get(_NOMINATIM, params=params), parse)
 
     def _pace(self) -> None:
         wait = self._min_interval_s - (time.monotonic() - self._last_call)
@@ -123,7 +141,8 @@ class OsmClient:
                 continue
             if r.status_code in (403, 429) or r.status_code >= 500:
                 raise _overloaded(f"kept failing (HTTP {r.status_code})")
-            r.raise_for_status()
+            if r.status_code >= 400:
+                raise PlacesError(f"OpenStreetMap request rejected (HTTP {r.status_code}); leave this visit pending and rerun in a few minutes.")
             self.calls += 1
             places = parse(r.json())
             if self._cache is not None:

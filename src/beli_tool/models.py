@@ -33,3 +33,4 @@ class MatchedPlace(BaseModel):
     raw: RawPlace
     match: PlaceCandidate | None = None
     candidates: list[PlaceCandidate] = Field(default_factory=list)
+    match_note: str | None = None

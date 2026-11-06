@@ -28,6 +28,15 @@ jobs:
         run: |
           uv export --locked --extra dev --no-emit-project --format requirements-txt -o /tmp/audit.txt > /dev/null
           uv run --locked pip-audit --disable-pip --require-hashes -r /tmp/audit.txt
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '26.7.0'
+      - name: Audited local phone tooling (synthetic socket test only)
+        working-directory: device-tools
+        run: |
+          npm ci --ignore-scripts --no-fund
+          npm audit --audit-level=low
+          npm test
       - name: Build unsigned application
         run: uv run --locked pyinstaller beli-tool.spec --noconfirm
       - name: Package review artifact

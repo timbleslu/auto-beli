@@ -6,4 +6,4 @@ No unsigned release is presented as a signed/notarized application.
 from beli_tool.cli import main
 
 if __name__ == '__main__':
-    main(['run'])
+    main(['run', '--pairing-dialog'])

@@ -5,9 +5,9 @@ The latest driver major found during setup (13.0.7) requires Appium 4 beta;
 it was not installed as an incompatible pair with stable Appium 3.
 
 From this directory, `npm ci --ignore-scripts` restores package-lock.json.
-Read ../SECURITY.md before use: bundled driver dependencies still have TWO known
-moderate advisories (18 affected dependency entries); this is not a clean audit.
-The root security overrides do not replace copies bundled inside the published driver.
+Read ../SECURITY.md and vendor/README.md for provenance of the unbundled driver.
+Dependency bundling was removed so the locked security overrides apply everywhere;
+a two-line fallback-forwarder patch enforces loopback binding in source and compiled JavaScript. A clean reinstall and npm audit reported zero known vulnerabilities.
 
 The assistant registered the pinned driver locally using:
 
@@ -21,8 +21,7 @@ Do not rerun installation blindly if already registered. To check:
 APPIUM_HOME="$PWD/private/appium" ./node_modules/.bin/appium driver list --installed
 ```
 
-No phone session, helper signing or Beli navigation is automatic. After resolving
-pre-production audit/compatibility issues and preparing WDA with the assistant,
+No phone session, helper signing or Beli navigation is automatic. After preparing and verifying WDA with the assistant,
 the local-only server command is:
 
 ```sh

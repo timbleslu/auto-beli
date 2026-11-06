@@ -105,3 +105,15 @@ def test_match_photo_no_food_nearby():
          "types": ["park"], "geometry": {"location": {"lat": 40.0, "lng": -73.0}}}])
     m = match_photo_cluster(raw, client)
     assert m.status == "no_match" and m.bucket == "been" and m.match is None
+
+
+def test_incomplete_osm_fallback_never_claims_confident_match():
+    from beli_tool.models import RawPlace
+    from beli_tool.matcher import match_photo_cluster
+    class Client:
+        def nearby_food(self,*args):
+            return [{'place_id':'osm:node/1','name':'Possible restaurant','types':['restaurant'],
+                     'vicinity':'1 Test Street','geometry':{'location':{'lat':40.0,'lng':-73.0}},
+                     '_requires_review':True}]
+    result=match_photo_cluster(RawPlace(source='photos',lat=40.0,lon=-73.0),Client())
+    assert result.status=='ambiguous' and result.match is None and result.match_note

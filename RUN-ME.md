@@ -23,11 +23,12 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
    Use [config.example.toml](config.example.toml) as an example. A range may cover at most 31 days.
    For multiple libraries, set `photos_library = "~/Pictures/Photos Library.photoslibrary"`
    to your actual chosen library. No library or synchronization setting is changed by this tool.
-4. Read the privacy notice: matching sends GPS coordinates to OSM Overpass servers.
+4. Read the privacy notice: matching sends GPS coordinates to OSM Overpass servers, or OSM Nominatim for incomplete bounded suggestions if Overpass fails.
    It is not fully offline. No photo pixels are sent to OSM. Scans can take time while a
    service retries. Control-C cancels startup; cached lookups and old progress survive.
-5. Open the plain address printed in Terminal, normally `http://127.0.0.1:8000`, on the Mac.
-   Enter the separate one-time pairing code. It expires after ten minutes and can connect
+5. A Mac pairing dialog appears. Click Copy code; the local browser page opens. Paste
+   the code into its pairing field and click Connect. The address is normally `http://127.0.0.1:8000`.
+   A command-line launch without `--pairing-dialog` prints the code in its terminal instead. It expires after ten minutes and can connect
    one browser once. A connected session lasts up to eight hours; restart to pair again.
    The code is never part of the web address. Keep the Terminal window private.
 6. Review each visit's date, restaurant name, branch address and photos. GPS proximity is

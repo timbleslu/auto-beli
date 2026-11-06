@@ -38,20 +38,22 @@ it has read-only repository permissions and does not publish unsigned releases a
 PyInstaller's ad-hoc bundle signature is not Developer ID signing or notarization.
 
 The optional local device tools use Appium 3.9.0 and XCUITest 12.22.8 with npm integrity hashes.
-Appium's root glob/minimatch copies are overridden to patched 14.0.2 / 11.0.1. The driver's
-published package bundles older nested copies that npm overrides/dedupe do not replace.
-`npm audit` still reports 18 affected dependency entries from TWO underlying moderate advisories:
+The first audit found 18 affected dependency entries from TWO actual moderate advisories:
+[glob cancellation](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) and
+[minimatch pattern amplification](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+These were availability vulnerabilities, not merely theoretical supply-chain risks.
 
-- [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4): glob cancellation
-  may leave filesystem traversal running after timeout (patched in 14.0.2).
-- [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249): attacker-controlled
-  patterns may amplify work in minimatch (patched in 11.0.1).
-
-These are actual advisories, not merely theoretical supply-chain concerns. Their relevance
-is availability under hostile traversal/pattern input. No external client is allowed to reach
-Appium; Beli automation is not enabled. Resolving the bundled driver copies and verifying driver
-compatibility remain pre-production work. Do not use npm audit fix --force: its proposed
-Appium downgrade/driver upgrade is not a tested compatible pair. No clean Node audit is claimed.
+Both are now repaired across the resolved tree using glob 14.0.2 and minimatch 11.0.1.
+The published driver bundled older nested copies that npm overrides/dedupe could not replace.
+A deterministic repackaging step removes those dependency bundles and the bundleDependencies
+manifest field. A separate two-line fix binds the fallback USB forwarder to loopback in source and
+compiled JavaScript, with a real socket-binding regression test. The other 740 upstream files are unchanged. The official upstream
+SHA512 is checked before repackaging. The generated archive is committed with provenance and
+an independently tested checksum; normal npm locking now applies to every dependency copy.
+See device-tools/vendor/README.md and tools/unbundle_driver.py. Only that explicit fallback loopback-binding change modifies executable driver code.
+A fresh npm ci --ignore-scripts succeeded, and npm audit reported ZERO known vulnerabilities.
+Driver import and registration also succeed. Real-device compatibility is separately tested;
+a clean dependency audit does not prove Beli navigation or save detection works.
 
 ## Remaining boundaries
 

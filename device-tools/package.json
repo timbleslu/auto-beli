@@ -4,11 +4,12 @@
   "version": "0.1.0",
   "description": "Local USB inspection tools; Beli automation is not yet validated",
   "scripts": {
-    "start": "appium --address 127.0.0.1 --port 4723 --log-level warn --log-no-colors"
+    "start": "appium --address 127.0.0.1 --port 4723 --log-level warn --log-no-colors",
+    "test": "node --test test-loopback.mjs"
   },
   "dependencies": {
     "appium": "3.9.0",
-    "appium-xcuitest-driver": "12.22.8"
+    "appium-xcuitest-driver": "file:vendor/appium-xcuitest-driver-12.22.8-loopback.tgz"
   },
   "engines": {
     "node": ">=26.0.0",

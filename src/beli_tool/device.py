@@ -44,3 +44,28 @@ def inspect_session(session_id: str):
         response = client.get(f'/session/{session_id}/source')
         response.raise_for_status()
         return response.json()['value']
+
+
+def pilot_capabilities(*, udid: str, ios_version: str, bundle_id: str,
+                       team: str, derived_data: str) -> dict:
+    """Attach-only real-device pilot. Bundle identity must come from device inspection.
+
+    No app archive, reinstall, reset, auto-launch, rating, picker or save command.
+    WDA and its screenshot broadcaster bind to device loopback; forwarding is USB.
+    """
+    if not all((udid, ios_version, bundle_id, team, derived_data)):
+        raise ValueError('Observed device, app and signing settings are required')
+    return {'platformName': 'iOS', 'appium:automationName': 'XCUITest',
+            'appium:udid': udid, 'appium:platformVersion': ios_version,
+            'appium:bundleId': bundle_id, 'appium:noReset': True,
+            'appium:fullReset': False, 'appium:autoLaunch': False,
+            'appium:forceAppLaunch': False, 'appium:shouldTerminateApp': False,
+            'appium:usePrebuiltWDA': True, 'appium:useNewWDA': False,
+            'appium:derivedDataPath': derived_data,
+            'appium:updatedWDABundleId': 'com.timbleslu.AutoBeliWDA',
+            'appium:xcodeOrgId': team, 'appium:xcodeSigningId': 'Apple Development',
+            'appium:wdaBindingIP': '127.0.0.1', 'appium:wdaLocalPort': 8100,
+            'appium:skipLogCapture': True, 'appium:showXcodeLog': False,
+            'appium:disableAutomaticScreenshots': True,
+            'appium:newCommandTimeout': 3600,
+            'appium:waitForIdleTimeout': 5}

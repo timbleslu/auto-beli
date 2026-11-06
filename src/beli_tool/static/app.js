@@ -44,6 +44,7 @@ const selections = new Map();
 function card(item) {
   const card = el('section', null, 'card body');
   card.append(el('h3', item.name || 'Choose a restaurant'), el('p', item.visit_date));
+  if (item.match_note) card.append(el('p', item.match_note, 'notice'));
   if (item.legacy_record) card.append(el('p', 'An old local Added/Skip record exists. Check Beli before repeating any action.', 'notice'));
   const include = checkbox('Include this visit in the batch'); card.append(include.label);
   const select = el('select'); select.setAttribute('aria-label', 'Restaurant and branch');

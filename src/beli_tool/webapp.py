@@ -56,7 +56,7 @@ def _serialize(item):
     return {'visit_id': visit_id(item), 'source': item.raw.source,
             'name': item.match.name if item.match else item.raw.name,
             'visit_date': str(item.raw.visit_date or ''),
-            'photos': _refs(item), 'status': item.status,
+            'photos': _refs(item), 'status': item.status, 'match_note': item.match_note,
             'candidates': [c.model_dump() for c in ([item.match] if item.match else item.candidates)]}
 
 

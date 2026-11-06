@@ -7,4 +7,4 @@ if ! command -v uv >/dev/null; then
   exit 1
 fi
 uv sync --locked
-uv run --locked beli-tool run "$@"
+uv run --locked beli-tool run --pairing-dialog "$@"

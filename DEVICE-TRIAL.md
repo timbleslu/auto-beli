@@ -1,21 +1,23 @@
 # USB pilot acceptance gate — not passed yet
 
 The session verified macOS 27.0.1 (26A434), Xcode 27.2 (27B52), and a physical
-USB-connected iPhone 16 Pro. iOS version and installed Beli version have not been read yet.
-Mac Photos access is blocked by macOS Full Disk Access pending a Codex restart.
+USB-connected iPhone 16 Pro running iOS 27.0.1 with Beli 10.7.0.
+Photos access now works after the Codex restart. Three recent clusters have been matched
+with explicitly incomplete OSM fallback suggestions; user approval remains pending.
 No Beli rankings, uploads or existing app data have been changed.
 
 ## Next physical step
 
-Restart Codex to apply the Full Disk Access change. Reopen this chat. The next assistant
-should use the checkpoint in the outputs folder and recheck read-only Photos/device access.
-Keep the iPhone connected and unlocked. Do not enter Apple/Beli passwords in chat.
+Trust the newly signed helper's Developer App certificate on the iPhone in Settings →
+General → VPN & Device Management, as requested in the active chat. A diagnostic result
+bundle identified this exact launch blocker. Keep the device online for Apple's validation.
+The Mac review page is also open for batch restaurant/photo approval; real previews stay local.
 
 ## Tooling prepared
 
 `device-tools/` contains a pinned local Appium/XCUITest install. The driver was registered in
-its ignored private Appium home. No real-device session has been created, and WebDriverAgent
-has not been signed or deployed. See SECURITY.md for unresolved bundled dependency advisories.
+its ignored private Appium home. WebDriverAgent has been built and signed, but a successful inspection session has not yet
+been established. Dependency advisories were repaired; see SECURITY.md and vendor provenance.
 `beli-tool doctor` checks readiness. `beli_tool.device.inspect_session` reads source only from
 an existing loopback Appium session; it neither creates a session nor performs taps.
 
