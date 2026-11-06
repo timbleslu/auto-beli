@@ -80,3 +80,23 @@ def test_probe_returns_none_when_library_opens(monkeypatch):
     src = OsxPhotosSource()
     monkeypatch.setattr(src, "_get_db", lambda: object())
     assert src.probe() is None
+
+
+def test_inventory_keeps_no_gps_images_and_uses_only_existing_local_labels(monkeypatch):
+    photos=[FakePhoto('food',40,-73,datetime(2026,10,24,12)),
+            FakePhoto('no-gps',None,None,datetime(2026,10,24,12)),
+            FakePhoto('other',40,-73,datetime(2026,10,24,12)),
+            FakePhoto('hidden',40,-73,datetime(2026,10,24,12))]
+    for p in photos:
+        p.labels=['Food'] if p.uuid!='other' else []
+        p.hidden=p.uuid=='hidden'
+        p.screenshot=False
+    source,db=_source_with(photos,since=date(2026,10,23),until=date(2026,10,29))
+    monkeypatch.setattr(source,'thumbnail_path',lambda ref:'synthetic.jpg')
+    monkeypatch.setattr(source,'original_path',lambda ref:None)
+    items=source.inventory()
+    assert {p.id for p in items}=={'food','no-gps','other'}
+    assert sum(p.food for p in items)==2
+    assert next(p for p in items if p.id=='no-gps').lat is None
+    assert db.seen_kwargs['images'] is True and db.seen_kwargs['movies'] is False
+    assert db.seen_kwargs['to_date']==datetime(2026,10,30,0)

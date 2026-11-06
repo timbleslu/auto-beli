@@ -24,30 +24,41 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
    For multiple libraries, set `photos_library = "~/Pictures/Photos Library.photoslibrary"`
    to your actual chosen library. No library or synchronization setting is changed by this tool.
 4. Read the privacy notice: matching sends GPS coordinates to OSM Overpass servers, or OSM Nominatim for incomplete bounded suggestions if Overpass fails.
-   It is not fully offline. No photo pixels are sent to OSM. Scans can take time while a
-   service retries. Control-C cancels startup; cached lookups and old progress survive.
+   Discovery is local; selected-visit matching is not fully offline. No photo pixels go to OSM.
+   A service outage can delay a lookup, but known Overpass outages are not retried for every
+   photo group in the same batch. Cached lookups and saved groups survive restart.
 5. A Mac pairing dialog appears. Click Copy code; the local browser page opens. Paste
    the code into its pairing field and click Connect. The address is normally `http://127.0.0.1:8000`.
    A command-line launch without `--pairing-dialog` prints the code in its terminal instead. It expires after ten minutes and can connect
    one browser once. A connected session lasts up to eight hours; restart to pair again.
    The code is never part of the web address. Keep the Terminal window private.
-6. Review each visit's date, restaurant name, branch address and photos. GPS proximity is
-   a suggestion, including for a single nearby restaurant. Choose the correct restaurant
-   in the dropdown. Leave uncertain visits pending. Confirm address omissions independently;
-   no automatic phone action is allowed without a checked Beli branch identity.
-7. Check only the photos you want attached. Nothing is selected by default. Or choose
-   “Continue without photos.” Check “Include this visit” and press “Approve selected mappings.”
-   The batch is stored once. Unchanged mappings do not need another approval after restart.
-8. Press Start. On your iPhone, open Beli yourself and search the shown restaurant.
-   Check the exact branch address before marking the branch checked. The provider's OSM
-   identifier is not a Beli identifier. Make all ratings and comparison choices in Beli yourself.
-9. Reopen the restaurant in Beli and check that the ranking saved. Only then use
-   “I checked that my ranking saved in Beli.” That is a manual confirmation, not automated proof.
-10. For photos, follow the one-photo procedure below. After checking the saved photo on
-    the correct Beli restaurant, record that specific photo's manual confirmation.
-11. Use “Done — next restaurant (manual confirmation)” to advance the local worklist.
-    It refuses to advance while requested photos remain pending. You may explicitly choose
-    “Finish without remaining photos.” Skip records a skip, not a successful ranking.
+6. In “Choose photos from one visit,” start with the Likely food filter. These suggestions
+   come from Apple Photos' existing local labels, not a new AI upload. Labels can be wrong or
+   missing. Use All images, Other / unlabelled, or Without GPS to find omitted pictures.
+   The inventory includes all visible still images in your chosen dates; hidden assets and videos
+   are excluded. The three-visit limit does not truncate discovery.
+7. Select pictures from ONE visit. Click “Find restaurants for selected photos.” This sends
+   only the selected visit's coordinates to OSM. Photos themselves stay local. If the photos
+   have no GPS, or suggestions are wrong, enter the restaurant name with city/address and
+   request a name search. Groups spanning more than three hours must be split into separate visits.
+8. Review the restaurant's full branch address. No restaurant is accepted automatically,
+   including a single nearby result. OSM coverage is incomplete and may not contain your restaurant.
+   Leave it pending if the correct branch cannot be identified. Use “Search this visit by name”
+   to replace wrong suggestions without losing the group's selected photos.
+9. Every selected image is shown in the group; there is no six-photo gallery cutoff. These
+   user-selected pictures are checked in the draft approval so you don't need to select them twice.
+   Uncheck any you do not want attached, or choose “Continue without photos.” Choose the correct
+   restaurant, check “Include this visit,” then press “Approve selected mappings.” This final
+   batch action approves uploads; discovery alone does not. Unchanged approvals survive restart.
+   An unapproved group can be returned to discovery; an approved group's saved progress is protected.
+10. Current Start/Pause/Resume/Stop controls manage a MANUAL worklist. No automatic Beli uploader
+    is enabled yet. On your iPhone, search the approved restaurant and check its exact address.
+    Make every rating/comparison choice yourself. Reopen it and check the ranking saved before
+    recording “I checked that my ranking saved in Beli.” This is manual testimony, not machine proof.
+11. Follow the one-photo procedure below. After checking that specific image is saved on the
+    correct restaurant, record its manual confirmation. “Done — next restaurant (manual confirmation)”
+    refuses to advance while requested photos remain pending. You can explicitly finish without
+    remaining photos. Skip is a skip, not successful completion.
 
 ## Photos on the iPhone — prove one first
 

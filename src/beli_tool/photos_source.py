@@ -13,7 +13,7 @@ class PhotoSource(Protocol):
 
 
 class OsxPhotosSource:
-    """Reads the local Apple Photos library; keeps only GPS-stamped, dated photos.
+    """Reads local Photos metadata; offers bounded image discovery and a legacy GPS source.
 
     The Photos database is opened once and reused, and the matched photos are
     indexed by UUID so ``thumbnail_path`` can resolve a card's image to a
@@ -74,17 +74,17 @@ class OsxPhotosSource:
         return out
 
     def thumbnail_path(self, uuid: str) -> str | None:
-        """Resolve a photo UUID to a small, browser-displayable image file.
+        """Resolve an indexed photo UUID to an available browser-displayable image.
 
-        Prefers a JPEG derivative (the originals are often HEIC, which browsers
-        can't show); falls back to the original. Returns None if unknown.
+        Prefers the largest available JPEG/PNG derivative for clearer review;
+        falls back to an original path if one exists. Returns None if unknown.
         """
         p = self._by_uuid.get(uuid)
         if p is None:
             return None
-        derivatives = [d for d in (p.path_derivatives or []) if d and os.path.exists(d)]
+        derivatives = [d for d in (p.path_derivatives or []) if d and Path(d).suffix.lower() in (".jpg", ".jpeg", ".png") and os.path.isfile(d)]
         if derivatives:
-            return min(derivatives, key=os.path.getsize)
+            return max(derivatives, key=os.path.getsize)
         if p.path and os.path.exists(p.path):
             return p.path
         return None
@@ -95,3 +95,49 @@ class OsxPhotosSource:
         if p is not None and p.path and os.path.isfile(p.path):
             return p.path
         return None
+
+    def inventory(self):
+        """All visible images in the bounded window, including those without GPS.
+
+        Reads only existing Photos categorization. No image pixels go to any AI.
+        Food labels are hints; screenshots and unlabelled images remain reviewable.
+        """
+        from datetime import timedelta
+        from beli_tool.discovery import PhotoAsset, food_hint
+        if self._since is None or self._until is None:
+            raise ValueError('Photo discovery requires a bounded date range')
+        db = self._get_db()
+        photos = db.photos(images=True, movies=False,
+            from_date=datetime.combine(self._since, datetime.min.time()),
+            to_date=datetime.combine(self._until + timedelta(days=1), datetime.min.time()))
+        assets=[]
+        for p in photos:
+            if not p.date or getattr(p,'hidden',False):
+                continue
+            self._by_uuid[p.uuid]=p
+            loc=p.location or (None,None)
+            try:labels=p.labels or []
+            except (AttributeError,KeyError):labels=[]
+            screenshot=bool(getattr(p,'screenshot',False))
+            assets.append(PhotoAsset(id=p.uuid,taken=p.date,lat=loc[0],lon=loc[1],
+                food=food_hint(labels,screenshot),preview_available=self.thumbnail_path(p.uuid) is not None,
+                original_available=self.original_path(p.uuid) is not None,screenshot=screenshot))
+        return sorted(assets,key=lambda a:a.taken,reverse=True)
+
+    def _asset(self, uuid):
+        p=self._by_uuid.get(uuid)
+        if p is None:
+            # Callers must enforce their queue/discovery/approval allowlist first.
+            # UUID lookup resolves a Photos asset, never a caller-supplied file path.
+            matches=self._get_db().photos_by_uuid([uuid])
+            p=matches[0] if matches else None
+            if p is not None:self._by_uuid[uuid]=p
+        return p
+
+    def approved_preview_path(self, uuid):
+        self._asset(uuid)
+        return self.thumbnail_path(uuid)
+
+    def approved_original_path(self, uuid):
+        self._asset(uuid)
+        return self.original_path(uuid)

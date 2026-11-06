@@ -125,8 +125,20 @@ def build_app_from_config(
     def rebuild() -> Queue:
         return scan(cfg, photo_source, client, ledger)
 
-    queue = rebuild()
-    photo_resolver = getattr(photo_source, "thumbnail_path", None)
+    discovery_enabled = cfg.photos_only and callable(getattr(photo_source, 'inventory', None))
+    assets = photo_source.inventory() if discovery_enabled else None
+    if assets is not None:
+        print(f"Photo-first discovery: {len(assets)} images in the selected dates; "
+              f"{sum(a.food for a in assets)} have local food labels. No coordinates sent yet.", flush=True)
+        queue = Queue()
+    else:
+        queue = rebuild()
+    def discovery():
+        return assets
+    def match_photos(ids, query):
+        from beli_tool.discovery import match_selection
+        return match_selection(assets, ids, client, query)
+    photo_resolver = getattr(photo_source, "approved_preview_path", None) or getattr(photo_source, "thumbnail_path", None)
     obsidian_log = ObsidianLog(cfg.obsidian_log) if cfg.obsidian_log else None
     if obsidian_log:
         print(f"  Mirroring adds to {cfg.obsidian_log}", flush=True)
@@ -135,7 +147,11 @@ def build_app_from_config(
         ledger,
         photo_resolver=photo_resolver,
         token=token,
-        rebuild=rebuild,
+        rebuild=None if discovery_enabled else rebuild,
+        discovery=discovery if discovery_enabled else None,
+        match_photos=match_photos if discovery_enabled else None,
+        window=(cfg.since, cfg.until) if discovery_enabled else None,
+        max_groups=cfg.max_visits,
         obsidian_log=obsidian_log,
         origin=origin,
     )

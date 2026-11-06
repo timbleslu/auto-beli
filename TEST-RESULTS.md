@@ -1,4 +1,4 @@
-# Test evidence — checkpoint, November 5, 2026 (America/New_York)
+# Test evidence — checkpoint, November 6, 2026 (America/New_York)
 
 This is an implementation checkpoint. The requested end-to-end Beli experience is unfinished.
 Baseline fork HEAD: `3cccf6a924fe34e3d7ca97489cc0f8907713ec23`.
@@ -19,21 +19,24 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
   was identified read-only from the device (bundle identity is kept separate from OSM IDs).
 - WebDriverAgent 16.17.7 built successfully with the user-selected Apple development team.
   First startup timed out; the diagnostic retry identified an untrusted Developer App certificate
-  on the iPhone. Physical trust is pending; no successful inspection session yet.
-- Full Disk Access works after the Codex restart. In the selected one-week window, 232 geotagged
-  dated images formed 62 time/location clusters. These counts are not confirmed restaurant visits.
-  No originals were locally downloaded for that window. Eleven previews were available across the
-  three trial clusters; iPhone availability of any chosen photo remains unverified.
+  on the iPhone. After the user trusted it, an inspection session succeeded. Beli was activated
+  and its uniquely observed Search button opened; the search screen exposed two input controls.
+  No restaurant query, rating, comparison or upload was performed. That session was explicitly
+  disconnected at the user's pause request; it remains disconnected during the discovery repairs.
+- Full Disk Access works after the Codex restart. Dated/GPS metadata, existing local food
+  labels and local preview availability were checked read-only. Library-specific counts,
+  identifiers and coordinates stay in ignored private runtime state. Availability of the
+  particular image chosen for the iPhone trial still requires verification.
 
 ## Checks completed
 
 - Before changes: original 110 tests passed.
-- Updated non-browser tests: 112 passed. Authentication, CSRF, queue validation, atomic
+- Updated non-browser tests: 121 passed. Authentication, CSRF, queue validation, atomic
   approval, manual status distinctions, partial-photo persistence, restart/pause/stop,
   explicit photo waiver, separate visits, exclusive process lock, legacy migration,
   private backups, metadata stripping and thumbnail rejection are covered.
-- Full current Python suite: **120 passed**, one upstream test-client deprecation warning.
-- Real Chromium 156.0.8078.4 via Playwright 1.64.1: 7 tests passed. Includes isolated
+- Full current Python suite: **130 passed**, one upstream test-client deprecation warning.
+- Real Chromium 156.0.8078.4 via Playwright 1.64.1: 8 tests passed. Includes isolated
   reproduction of the exact old entity-decoding XSS, followed by secure DOM rendering
   and batch/manual-flow tests with CSP ON and OFF, malicious strings, punctuation and Unicode.
 - Real TLS test: 1 passed. A temporary private CA validates the server; an untrusted
@@ -49,12 +52,19 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 - A further two-line driver patch binds the legacy USB forwarder to loopback, in source and compiled
   JavaScript. A real socket test passes (1 Node test); the RemoteXPC forwarder already defaults to
   loopback. Appium status was reached at 127.0.0.1:4723 and its actual binding verified.
-- Overpass timed out/rejected the tiny public health query. A bounded Nominatim restaurant search
-  was reachable. The provider now falls back with review-only, explicitly incomplete suggestions.
-  The same three recent clusters produced two suggestion groups and one unmatched group. No
-  Beli action or photo upload was performed. Restaurant/photo batch approval is pending.
-- Local Mac review server is running with a native pairing dialog. Real previews are shown only
-  to the user in their local browser; no screenshots were captured or uploaded.
+- Overpass timed out/rejected public health queries. A bounded Nominatim search worked,
+  with explicitly incomplete/review-only suggestions. The first GPS-cluster workflow was rejected
+  by the user as poor: it mixed non-food pictures, omitted pictures, and suggested wrong restaurants.
+- Photo-first discovery replaces automatic matching of the three latest location clusters.
+  The new inventory includes the complete configured window of visible still images with existing local
+  food-label hints. Discovery itself sends no coordinates. All images remain accessible through filters,
+  including unlabelled/no-GPS pictures. Classification accuracy has NOT been measured against
+  user ground truth; the labels are hints, not an assertion that all food was found.
+- Tests prove no startup lookup, retention of no-GPS images, no six-photo truncation, explicit
+  name corrections, persistence of unapproved groups, protection of approved groups, rejection
+  of overlapping groups, and browser selection retention across filters/name corrections/reload.
+- The refreshed local review uses a native pairing dialog. Real previews are shown only to the
+  user in their local browser; no private screenshot or photo was uploaded to AI debugging.
 
 One upstream FastAPI/Starlette test-client deprecation warning remains. It is not a
 vulnerability finding. Reproducible source locking does not imply bit-identical .app
@@ -62,7 +72,7 @@ binaries across different SDKs or operating systems.
 
 ## Not tested or implemented
 
-Actual Beli accessibility/navigation; physical rating pause/resume; positive ranking save
+Beli restaurant-specific navigation (beyond the observed Search button); physical rating pause/resume; positive ranking save
 recognition; photo picker selection; transfer/import; saved-photo detection; automatic
 multi-restaurant advancement; real upload failure/uncertainty/duplicate reconciliation;
 real already-ranked handling; real branch selection; phone disconnect recovery;

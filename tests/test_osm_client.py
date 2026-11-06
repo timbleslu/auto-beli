@@ -177,3 +177,15 @@ def test_overpass_rejection_uses_bounded_review_only_osm_fallback(monkeypatch):
     assert results[0]['_requires_review'] is True
     count=len(seen);assert c.nearby_food(40.0,-73.0)==results
     assert len(seen)==count
+
+
+def test_overpass_outage_is_not_repeated_for_every_visit(monkeypatch):
+    monkeypatch.setattr('beli_tool.osm_client.time.sleep',lambda s:None)
+    counts={'overpass':0,'fallback':0}
+    def handler(request):
+        if request.url.host=='nominatim.openstreetmap.org':
+            counts['fallback']+=1;return httpx.Response(200,json=[])
+        counts['overpass']+=1;return httpx.Response(406)
+    c=_client(handler)
+    c.nearby_food(40.0,-73.0);c.nearby_food(41.0,-74.0)
+    assert counts=={'overpass':1,'fallback':2}

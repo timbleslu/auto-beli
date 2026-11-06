@@ -56,7 +56,7 @@ def export_approved(cfg):
             for ref in visit['photos']:
                 if visit['attachments'][ref] != 'pending':
                     continue
-                original = source.original_path(ref)
+                original = source.approved_original_path(ref)
                 if not original:
                     raise RuntimeError('An approved original is not locally available. Open Photos and download it there, then retry.')
                 name = hashlib.sha256(ref.encode()).hexdigest() + '.jpg'

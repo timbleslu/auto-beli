@@ -71,3 +71,13 @@ Those real-device checks are listed in DEVICE-TRIAL.md. Unknown states must paus
 No private screenshots, Photos pixels or library were uploaded for debugging. No Beli passwords,
 reverse-engineered account APIs, speculative deep links, sync-setting changes, asset deletion,
 Beli reinstall or ranking reset are used.
+
+## Photo-first discovery update
+
+The authenticated discovery endpoint exposes only visible still images in the configured
+window. Food hints use existing local Photos labels; unlabelled and no-GPS images are available
+for manual review. No matching request runs at startup. A selected group is validated against
+the in-memory window before its coordinates/name query can reach OSM. External results remain
+unconfirmed even for a single candidate. Unapproved groups persist in a new additive SQLite
+table; approved selections cannot be removed or overwritten through draft editing. Photo UUIDs
+are allowlisted before resolving image paths, including restored approved selections.

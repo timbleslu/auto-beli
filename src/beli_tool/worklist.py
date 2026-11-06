@@ -14,7 +14,7 @@ def visit_id(item) -> str:
     raw = item.raw
     identity = [raw.source, raw.visit_date.isoformat() if raw.visit_date else None,
                 sorted(raw.photo_refs or ([raw.photo_ref] if raw.photo_ref else [])),
-                raw.name, raw.source_list]
+                raw.name if raw.source == "maps" else None, raw.source_list]
     return hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -27,6 +27,7 @@ class Worklist:
                 outcome TEXT NOT NULL DEFAULT 'pending')''')
             ledger.conn.execute('''CREATE TABLE IF NOT EXISTS assistant_session (
                 id INTEGER PRIMARY KEY CHECK(id=1), status TEXT NOT NULL)''')
+            ledger.conn.execute('CREATE TABLE IF NOT EXISTS assistant_matches (visit_id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
             ledger.conn.execute("INSERT OR IGNORE INTO assistant_session VALUES (1, 'idle')")
             # Restart always requires explicit Resume; never resume phone taps.
             ledger.conn.execute("UPDATE assistant_session SET status='paused' WHERE status='running'")
@@ -115,3 +116,28 @@ class Worklist:
                 raise ValueError('Unknown action')
             self.ledger.conn.execute('UPDATE assistant_visits SET payload=?,outcome=? WHERE visit_id=?',
                                      (json.dumps(m),outcome,ident))
+
+    def matches(self):
+        from beli_tool.models import MatchedPlace
+        with self.ledger._lock:
+            rows=self.ledger.conn.execute('SELECT payload FROM assistant_matches ORDER BY rowid').fetchall()
+        return [MatchedPlace.model_validate_json(row[0]) for row in rows]
+
+    def save_match(self, item):
+        ident=visit_id(item)
+        with self.ledger._lock,self.ledger.conn:
+            if self.ledger.conn.execute('SELECT 1 FROM assistant_visits WHERE visit_id=?',(ident,)).fetchone():
+                raise ValueError('This photo group is already approved. Its selection and progress were preserved.')
+            import json
+            refs=set(item.raw.photo_refs)
+            for old_id, payload in self.ledger.conn.execute('SELECT visit_id,payload FROM assistant_matches'):
+                if old_id != ident and refs & set(json.loads(payload)['raw']['photo_refs']):
+                    raise ValueError('Some photos already belong to another group. Return that unapproved group to discovery before regrouping.')
+            self.ledger.conn.execute('INSERT INTO assistant_matches VALUES (?,?) ON CONFLICT(visit_id) DO UPDATE SET payload=excluded.payload',
+                                     (ident,item.model_dump_json()))
+
+    def remove_match(self, ident):
+        with self.ledger._lock,self.ledger.conn:
+            if self.ledger.conn.execute('SELECT 1 FROM assistant_visits WHERE visit_id=?',(ident,)).fetchone():
+                raise ValueError('Approved selections and their saved progress cannot be removed here')
+            self.ledger.conn.execute('DELETE FROM assistant_matches WHERE visit_id=?',(ident,))

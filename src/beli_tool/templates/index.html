@@ -6,6 +6,18 @@
 <section id="workspace" hidden><p class="notice">GPS suggests nearby restaurants; it does not prove where you ate. Confirm the name and branch address. Only checked photos are approved. Uploads inherit Beli’s visibility settings. This tool does not yet upload or verify Beli saves.</p>
 <div id="controls"></div><section id="current"></section>
 <button id="rescan">Rescan dates in configuration</button><button id="logout">Disconnect browser</button>
-<h2>Review restaurant and photo mappings</h2><p>Select each restaurant and each photo, then approve the batch once. Unselected visits stay pending.</p>
+<section id="discovery" hidden>
+<h2>1. Choose photos from one visit</h2>
+<p id="discovery-stats"></p>
+<p>Food labels are local suggestions, not proof of a meal. Check unlabelled photos too. Nothing is selected automatically. GPS is sent to OSM only when you request nearby suggestions.</p>
+<label>Show photos <select id="photo-filter"><option value="food">Likely food</option><option value="all">All images</option><option value="other">Other / unlabelled</option><option value="no-gps">Without GPS</option></select></label>
+<p id="discovery-count" role="status"></p>
+<div id="photo-grid" class="discovery-grid"></div>
+<label>Restaurant name, city or address (optional)<input id="restaurant-query" type="text" maxlength="200" placeholder="Use a name if GPS suggestions are wrong or missing"></label>
+<button id="match-photos" type="button">Find restaurants for selected photos</button>
+<button id="clear-discovery" type="button">Clear photo selection</button>
+<p>This creates a review group, not an upload approval. Match up to three visits for the trial, then approve their restaurant/photo mappings together below.</p>
+</section>
+<h2>2. Review restaurant and photo mappings</h2><p>Select each restaurant and each photo, then approve the batch once. Unselected visits stay pending.</p>
 <form id="approval"><div id="root"></div><button>Approve selected mappings</button></form>
 <h2>Persistent worklist</h2><div id="worklist"></div></section></main></body></html>

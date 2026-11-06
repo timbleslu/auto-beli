@@ -1,5 +1,9 @@
 'use strict';
 let csrf = '';
+let discoveryData = null;
+let discoveryEnabled = false;
+const discoverySelected = new Set();
+let usedPhotos = new Set();
 const $ = id => document.getElementById(id);
 const el = (tag, text, cls) => {
   const n = document.createElement(tag);
@@ -41,25 +45,44 @@ function checkbox(text) {
   return {label, input};
 }
 const selections = new Map();
+let mappingDrafts = new Map();
 function card(item) {
   const card = el('section', null, 'card body');
   card.append(el('h3', item.name || 'Choose a restaurant'), el('p', item.visit_date));
   if (item.match_note) card.append(el('p', item.match_note, 'notice'));
   if (item.legacy_record) card.append(el('p', 'An old local Added/Skip record exists. Check Beli before repeating any action.', 'notice'));
-  const include = checkbox('Include this visit in the batch'); card.append(include.label);
+  const draft = mappingDrafts.get(item.visit_id);
+  const include = checkbox('Include this visit in the batch');
+  include.input.checked = Boolean(draft?.include); card.append(include.label);
   const select = el('select'); select.setAttribute('aria-label', 'Restaurant and branch');
   const empty = el('option', 'Choose the correct name and address'); empty.value = ''; select.append(empty);
   for (const c of item.candidates) {
-    const option = el('option', c.name + ' — ' + c.address); option.value = c.place_id; select.append(option);
+    const distance = Number.isFinite(c.distance_m) ? ` (${Math.round(c.distance_m)} m from photos)` : '';
+    const option = el('option', c.name + ' — ' + c.address + distance); option.value = c.place_id; select.append(option);
   }
   if (!item.candidates.length) { include.input.disabled = true; card.append(el('p', 'No match. Leave pending and check this visit manually.')); }
+  if (draft?.provider && item.candidates.some(c => c.place_id === draft.provider)) select.value = draft.provider;
   card.append(select);
+  card.append(el('p', `${item.photos.length} photos in this group — all shown below.`));
   const photos = new Map();
   for (const ref of item.photos) {
     const box = el('div', null, 'photo'); const choice = checkbox('Approve this photo');
+    choice.input.checked = draft ? draft.photos.has(ref) : discoveryEnabled;
     box.append(image(ref), choice.label); card.append(box); photos.set(ref, choice.input);
   }
-  const noPhotos = checkbox('Continue without photos for this visit'); card.append(noPhotos.label);
+  const noPhotos = checkbox('Continue without photos for this visit'); noPhotos.input.checked = Boolean(draft?.noPhotos); card.append(noPhotos.label);
+  if (discoveryEnabled) {
+    const tools = el('div', null, 'group-tools');
+    const label = el('label', 'Wrong suggestions? Search restaurant name, city or address');
+    const query = el('input'); query.type = 'text'; query.maxLength = 200; label.append(query);
+    const search = button('Search this visit by name', async () => {
+      if (!query.value.trim()) throw new Error('Enter a restaurant name with its city or address.');
+      await api('/api/discovery-match', {photos:item.photos, query:query.value.trim()});
+    });
+    query.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); search.click(); } });
+    tools.append(label, search, button('Return group to photo selection', () => api('/api/remove-match', {visit_id:item.visit_id})));
+    card.append(tools);
+  }
   selections.set(item.visit_id, {include:include.input, select, photos, noPhotos:noPhotos.input});
   return card;
 }
@@ -96,7 +119,18 @@ function renderCurrent(session) {
 async function load() {
   const s = await api('/api/session'); csrf = s.csrf;
   $('login').hidden = true; $('workspace').hidden = false;
-  const q = await api('/api/queue'); selections.clear();
+  const q = await api('/api/queue');
+  mappingDrafts = new Map([...selections].map(([id, s]) => [id, {include:s.include.checked, provider:s.select.value, photos:new Set([...s.photos].filter(([,input]) => input.checked).map(([ref]) => ref)), noPhotos:s.noPhotos.checked}]));
+  selections.clear();
+  discoveryEnabled = Boolean(q.discovery_enabled);
+  $('discovery').hidden = !discoveryEnabled;
+  usedPhotos = new Set(q.visits.flatMap(v => v.photos));
+  if (discoveryEnabled) {
+    const first = discoveryData === null;
+    discoveryData = await api('/api/discovery');
+    if (first && !discoveryData.likely_food) $('photo-filter').value = 'all';
+    renderDiscovery();
+  }
   const approved = new Set(s.visits.map(v => v.visit_id));
   $('root').replaceChildren(...q.visits.filter(v => !approved.has(v.visit_id)).map(card));
   $('rescan').hidden = !q.can_rescan;
@@ -108,6 +142,53 @@ async function load() {
   renderCurrent(s);
   $('worklist').replaceChildren(...s.visits.map(v => el('p', `${v.name} — ${v.address}: ${v.outcome}; ranking ${v.ranking}; photos ${Object.values(v.attachments).join(', ') || 'none requested'}`)));
 }
+function renderDiscovery() {
+  if (!discoveryData) return;
+  const d = discoveryData;
+  $('discovery-stats').textContent = `${d.since} through ${d.until}: ${d.photos.length} images, ${d.likely_food} with food labels, ${d.without_gps} without GPS. All are available in these filters; the trial limit applies to visits, not photo discovery.`;
+  const mode = $('photo-filter').value;
+  const filtered = d.photos.filter(a => mode === 'all' || (mode === 'food' && a.likely_food) ||
+    (mode === 'other' && !a.likely_food) || (mode === 'no-gps' && !a.has_location));
+  const nodes = filtered.map(a => {
+    const box = el('article', null, 'asset');
+    const date = new Date(a.taken).toLocaleString();
+    const choice = checkbox('Select photo taken ' + date);
+    choice.input.checked = discoverySelected.has(a.id);
+    choice.input.disabled = usedPhotos.has(a.id);
+    choice.input.addEventListener('change', () => {
+      if (choice.input.checked) discoverySelected.add(a.id); else discoverySelected.delete(a.id);
+      updateDiscoveryCount(filtered.length);
+    });
+    box.append(image(a.id), choice.label);
+    box.append(el('p', (a.likely_food ? 'Local food label' : 'Unlabelled / other') +
+      (a.has_location ? ' · GPS available' : ' · No GPS — name search available'), 'hint'));
+    if (a.screenshot) box.append(el('p', 'Screenshot — not suggested as a meal photo', 'hint'));
+    if (!a.preview_available) box.append(el('p', 'Preview unavailable. Check this image in Photos.', 'hint'));
+    if (usedPhotos.has(a.id)) box.append(el('p', 'Already in a review group', 'hint'));
+    return box;
+  });
+  $('photo-grid').replaceChildren(...nodes);
+  if (!nodes.length) $('photo-grid').append(el('p', 'No images in this filter. Try All images.'));
+  updateDiscoveryCount(filtered.length);
+}
+function updateDiscoveryCount(visible) {
+  $('discovery-count').textContent = `${visible} shown · ${discoverySelected.size} selected across filters`;
+  $('match-photos').disabled = !discoverySelected.size;
+}
+$('photo-filter').addEventListener('change', renderDiscovery);
+$('clear-discovery').addEventListener('click', () => { discoverySelected.clear(); renderDiscovery(); });
+$('match-photos').addEventListener('click', async () => {
+  const photos = [...discoverySelected];
+  if (!photos.length) return;
+  const b = $('match-photos'); b.disabled = true;
+  message('Looking up this selected visit with OSM…');
+  try {
+    await api('/api/discovery-match', {photos, query:$('restaurant-query').value.trim()});
+    photos.forEach(id => discoverySelected.delete(id));
+    $('restaurant-query').value = '';
+    await load(); message('Visit ready for restaurant and photo approval below. Nothing was uploaded.');
+  } catch(e) { message(e.message); b.disabled = false; }
+});
 $('login-form').addEventListener('submit', async e => {
   e.preventDefault();
   try { await api('/api/login', {code:$('code').value}); $('code').value = ''; await load(); message('Connected.'); }

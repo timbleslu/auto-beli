@@ -28,10 +28,17 @@ class Login(Strict):
 class Mapping(Strict):
     visit_id: str = Field(max_length=64)
     provider_id: str = Field(max_length=256)
-    photos: list[str] = Field(max_length=6)
+    photos: list[str] = Field(max_length=100)
 
 class Batch(Strict):
     mappings: list[Mapping] = Field(max_length=20)
+
+class DiscoverReq(Strict):
+    photos: list[str] = Field(min_length=1, max_length=100)
+    query: str = Field(default='', max_length=200)
+
+class RemoveReq(Strict):
+    visit_id: str = Field(max_length=64)
 
 class Control(Strict):
     action: str
@@ -61,7 +68,7 @@ def _serialize(item):
 
 
 def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=None,
-               obsidian_log=None, origin='http://127.0.0.1:8000') -> FastAPI:
+               obsidian_log=None, origin='http://127.0.0.1:8000', discovery=None, match_photos=None, window=None, max_groups=3) -> FastAPI:
     """Auth is mandatory, even with token=None. token is an optional pairing seed.
 
     Only the public shell/static assets/login are unauthenticated. Private assets
@@ -73,7 +80,13 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
     app.state.pairing_code = sessions.pairing_code
     app.state.sessions = sessions
     work = Worklist(ledger)
-    state = {'queue': queue}
+    def selected_queue():
+        matches = work.matches()
+        if window:
+            matches = [m for m in matches if m.raw.visit_date and window[0] <= m.raw.visit_date <= window[1]]
+        return Queue(been=[m for m in matches if m.status != 'no_match'],
+                     review=[m for m in matches if m.status == 'no_match'])
+    state = {'queue': selected_queue() if discovery else queue}
     lock = threading.Lock()
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=[sessions.host.split(':')[0]])
 
@@ -132,6 +145,7 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
         # Legacy records are visible for explicit reconciliation, never promoted
         # to machine verification and never used as new Beli identities.
         return {'version': __version__, 'can_rescan': rebuild is not None,
+                'discovery_enabled': discovery is not None,
                 'visits': [{**_serialize(m),
                             'legacy_record': bool(m.match and ledger.is_handled(m.match.place_id))}
                            for m in _items(state['queue'])]}
@@ -140,6 +154,8 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
     def photo(uuid: str, csrf=Depends(sessions.guard)):
         allowed = {r for m in _items(state['queue']) for r in _refs(m)}
         allowed.update(r for v in work.snapshot()['visits'] for r in v['photos'])
+        if discovery:
+            allowed.update(a.id for a in discovery())
         if uuid not in allowed:
             raise HTTPException(404)
         path = photo_resolver(uuid) if photo_resolver else None
@@ -156,6 +172,57 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
             if not f.read(8).startswith(media[1]):
                 raise HTTPException(404)
         return FileResponse(path, media_type=media[0])
+
+    @app.get('/api/discovery')
+    def inventory(csrf=Depends(sessions.guard)):
+        if not discovery:
+            raise HTTPException(404)
+        assets = discovery()
+        return {'photos':[a.public() for a in assets],
+                'since':str(window[0]) if window else '', 'until':str(window[1]) if window else '',
+                'max_groups':max_groups,
+                'likely_food':sum(a.food for a in assets),
+                'without_gps':sum(a.lat is None or a.lon is None for a in assets)}
+
+    @app.post('/api/discovery-match')
+    def discover_match(req: DiscoverReq, csrf=Depends(sessions.guard)):
+        if match_photos is None:
+            raise HTTPException(404)
+        if work.snapshot()['status'] == 'running':
+            raise HTTPException(409, 'Pause before reviewing a new photo group')
+        if not lock.acquire(blocking=False):
+            raise HTTPException(409, 'Another matching operation is running')
+        try:
+            # Validate selection before an external request, including membership.
+            known = {a.id for a in discovery()}
+            if not set(req.photos) <= known:
+                raise ValueError('Selected photos are outside the current date window')
+            done = {v['visit_id'] for v in work.snapshot()['visits'] if v['outcome'] != 'pending'}
+            groups = [m for m in _items(state['queue']) if visit_id(m) not in done]
+            same_group = any(set(_refs(m)) == set(req.photos) for m in groups)
+            if len(groups) >= max_groups and not same_group:
+                raise ValueError('Finish or return a group to discovery before adding more trial visits')
+            item = match_photos(req.photos, req.query)
+            work.save_match(item)
+            state['queue'] = selected_queue()
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        except PlacesError as e:
+            raise HTTPException(502, 'OSM search unavailable. Your photo selection stays pending; try again later.') from e
+        finally:
+            lock.release()
+        return {'ok':True}
+
+    @app.post('/api/remove-match')
+    def remove_match(req: RemoveReq, csrf=Depends(sessions.guard)):
+        if not discovery or work.snapshot()['status'] == 'running':
+            raise HTTPException(409, 'Pause before editing unapproved groups')
+        try:
+            work.remove_match(req.visit_id)
+        except ValueError as e:
+            raise HTTPException(409,str(e)) from e
+        state['queue'] = selected_queue()
+        return {'ok':True}
 
     @app.post('/api/approve')
     def approve(req: Batch, csrf=Depends(sessions.guard)):

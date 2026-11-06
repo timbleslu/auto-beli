@@ -1,6 +1,6 @@
 # Photos → Beli assistant (work in progress)
 
-This fork is being converted into a Photos-only assistant. The secure review interface,
+This fork is being converted into a Photos-only assistant. The secure photo-first review interface,
 batch approvals, persistent manual worklist, and approved-original exporter are implemented.
 **Automatic Beli navigation, iPhone picker selection and saved-result verification are not implemented or validated yet.**
 Do not use this as an unattended uploader.
@@ -10,8 +10,11 @@ Start with [RUN-ME.md](RUN-ME.md). See [SECURITY.md](SECURITY.md) for the threat
 [TEST-RESULTS.md](TEST-RESULTS.md) for actual test evidence and limitations.
 
 New installations use Apple Photos only, OpenStreetMap, a seven-day range and three visits.
-No Google Takeout, CSV, Google key or billing account is needed. Matching sends coordinates
-to external OSM services. Restaurant suggestions always require your approval.
+No Google Takeout, CSV, Google key or billing account is needed. Discovery uses existing local
+Apple Photos food labels and also exposes unlabelled/no-GPS images. You define each visit's
+photo group before matching. Only that selected lookup sends coordinates or a name query
+to external OSM services. Restaurant suggestions always require approval and can be corrected
+by name. Food labels and GPS are suggestions, not proof of a restaurant visit.
 
 Old `handled` completion rows remain intact. They are local records, not evidence that
 Beli saved anything. New photo visits are shown for reconciliation even when an old

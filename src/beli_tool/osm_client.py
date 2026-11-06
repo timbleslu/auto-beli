@@ -69,6 +69,7 @@ class OsmClient:
         self._cache = cache
         self._min_interval_s = min_interval_s
         self._last_call = 0.0
+        self._overpass_retry_after = 0.0
         self.hits = 0
         self.calls = 0
 
@@ -89,7 +90,15 @@ class OsmClient:
             ");out center 20;"
         )
         key = f"osm:nearby:{radius_m}:{round(lat, 6)}:{round(lon, 6)}"
+        # Avoid repeating a known outage for every visit in one small batch.
+        if self._cache is not None:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self.hits += 1
+                return cached
         try:
+            if time.monotonic() < self._overpass_retry_after:
+                raise PlacesError("Overpass is cooling down after an outage")
             return self._fetch(
                 key,
                 lambda attempt: self._http.post(
@@ -98,6 +107,9 @@ class OsmClient:
                 _parse_overpass,
             )
         except PlacesError:
+            now = time.monotonic()
+            if now >= self._overpass_retry_after:
+                self._overpass_retry_after = now + 180
             # An explicitly bounded amenity search returns suggestions, not an
             # exhaustive nearby list. Never promote these to confident matches.
             delta_lat = radius_m / 111_320
