@@ -1,110 +1,43 @@
 from datetime import date
-from pathlib import Path
-
 import pytest
 from beli_tool.config import load_config
 
 
-def test_load_config_reads_toml(tmp_path):
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('google_places_api_key = "KEY123"\n')
-    cfg = load_config(cfg_file)
-    assert cfg.api_key == "KEY123"
-    assert cfg.saved_dir.name == "inbox"
+def test_new_home_is_private_photos_only_osm_and_small(tmp_path, monkeypatch):
+    monkeypatch.setattr('beli_tool.config.DEFAULT_HOME',tmp_path/'home')
+    c=load_config()
+    assert c.photos_only and c.provider=='osm' and c.max_visits==3
+    assert 0 <= (c.until-c.since).days <= 7
+    assert (tmp_path/'home').stat().st_mode & 0o077==0
+    assert (tmp_path/'home/config.toml').stat().st_mode & 0o077==0
 
 
-def test_load_config_missing_key_raises(tmp_path, monkeypatch):
-    monkeypatch.delenv("BELI_PLACES_KEY", raising=False)
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text("saved_dir = \"/tmp/x\"\n")
-    with pytest.raises(RuntimeError):
-        load_config(cfg_file)
+def test_optional_legacy_google_and_csv_are_explicit(tmp_path):
+    path=tmp_path/'config.toml'
+    path.write_text('google_places_api_key="key"\nphotos_only=false\nsaved_dir="~/inbox"\n')
+    c=load_config(path)
+    assert c.provider=='google' and c.api_key=='key' and not c.photos_only
+    assert c.saved_dir.is_absolute()
 
 
-def test_load_config_env_var_fallback(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "ENVKEY")
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text("saved_dir = \"/tmp/x\"\n")
-    cfg = load_config(cfg_file)
-    assert cfg.api_key == "ENVKEY"
+def test_google_requires_key_and_env_is_supported(tmp_path, monkeypatch):
+    p=tmp_path/'config.toml';p.write_text('provider="google"')
+    monkeypatch.delenv('BELI_PLACES_KEY',raising=False)
+    with pytest.raises(RuntimeError):load_config(p)
+    monkeypatch.setenv('BELI_PLACES_KEY','key')
+    assert load_config(p).api_key=='key'
 
 
-def test_load_config_expands_tilde_paths(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "K")
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('saved_dir = "~/beli-tool/inbox"\ndb_path = "~/x.sqlite"\n')
-    cfg = load_config(cfg_file)
-    assert cfg.saved_dir == Path("~/beli-tool/inbox").expanduser()
-    assert cfg.db_path == Path("~/x.sqlite").expanduser()
-    assert "~" not in str(cfg.saved_dir)
+@pytest.mark.parametrize('text',[
+    'provider="bing"','max_visits=0','max_visits=21',
+    'since="2020-01-01"\nuntil="2026-01-01"',
+    'since="2026-11-05"\nuntil="2026-11-01"',
+])
+def test_invalid_configuration_fails(tmp_path,text):
+    p=tmp_path/'config.toml';p.write_text(text)
+    with pytest.raises(RuntimeError):load_config(p)
 
 
-def test_load_config_since_defaults_to_none(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "K")
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('saved_dir = "/tmp/x"\n')
-    assert load_config(cfg_file).since is None
-
-
-def test_load_config_since_accepts_quoted_and_bare_dates(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "K")
-    quoted = tmp_path / "q.toml"
-    quoted.write_text('since = "2024-01-01"\n')
-    assert load_config(quoted).since == date(2024, 1, 1)
-    bare = tmp_path / "b.toml"  # tomllib parses this into a real date object
-    bare.write_text("since = 2024-01-01\n")
-    assert load_config(bare).since == date(2024, 1, 1)
-
-
-def test_load_config_seeds_template_on_default_path(tmp_path, monkeypatch):
-    monkeypatch.delenv("BELI_PLACES_KEY", raising=False)
-    monkeypatch.setattr("beli_tool.config.DEFAULT_HOME", tmp_path / "home")
-    # No key yet, so it still raises, but it must have created a usable home.
-    with pytest.raises(RuntimeError):
-        load_config()
-    seeded = tmp_path / "home" / "config.toml"
-    assert seeded.exists()
-    assert "PASTE_YOUR_KEY_HERE" in seeded.read_text()
-    assert (tmp_path / "home" / "inbox").is_dir()
-
-
-def test_load_config_placeholder_key_still_raises(tmp_path, monkeypatch):
-    monkeypatch.delenv("BELI_PLACES_KEY", raising=False)
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('google_places_api_key = "PASTE_YOUR_KEY_HERE"\n')
-    with pytest.raises(RuntimeError):
-        load_config(cfg_file)
-
-
-def test_load_config_max_visits_default_and_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "K")
-    default = tmp_path / "a.toml"
-    default.write_text('saved_dir = "/tmp/x"\n')
-    assert load_config(default).max_visits == 300
-    override = tmp_path / "b.toml"
-    override.write_text('saved_dir = "/tmp/x"\nmax_visits = 50\n')
-    assert load_config(override).max_visits == 50
-
-
-def test_load_config_provider_osm_needs_no_key(tmp_path, monkeypatch):
-    monkeypatch.delenv("BELI_PLACES_KEY", raising=False)
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('provider = "osm"\nsaved_dir = "/tmp/x"\n')
-    cfg = load_config(cfg_file)
-    assert cfg.provider == "osm"
-    assert cfg.api_key == ""
-
-
-def test_load_config_provider_defaults_to_google(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "K")
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('saved_dir = "/tmp/x"\n')
-    assert load_config(cfg_file).provider == "google"
-
-
-def test_load_config_unknown_provider_raises(tmp_path, monkeypatch):
-    monkeypatch.setenv("BELI_PLACES_KEY", "K")
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('provider = "bing"\n')
-    with pytest.raises(RuntimeError):
-        load_config(cfg_file)
+def test_quoted_and_bare_dates(tmp_path):
+    p=tmp_path/'config.toml';p.write_text('since=2026-11-01\nuntil="2026-11-05"')
+    c=load_config(p);assert c.since==date(2026,11,1) and c.until==date(2026,11,5)

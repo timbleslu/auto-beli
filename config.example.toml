@@ -1,17 +1,11 @@
-# Matching provider: "google" (Places API (New), needs the key below plus a
-# billing account) or "osm" (OpenStreetMap via Overpass + Nominatim: free, no
-# key, no billing; coverage is thinner, so more visits land in review).
-provider = "google"
-google_places_api_key = "PASTE_YOUR_KEY_HERE"
-saved_dir = "~/Library/Application Support/beli-tool/inbox"
-db_path = "~/Library/Application Support/beli-tool/ledger.sqlite"
-# Cap on how many photo "visits" (most recent first) to match per run.
-# Each visit is one lookup (billed on "google", free on "osm"); raise this to
-# process more backlog.
-max_visits = 300
-# Ignore photos taken before this date. Keeps the library scan bounded;
-# without it every run walks your entire Photos history.
-# since = "2024-01-01"
-# Optional: mirror every place you add into an Obsidian note, as a running
-# history. The note is created on first write. Leave unset to skip entirely.
-# obsidian_log = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/YOUR_VAULT/08-Lookup/beli-log.md"
+# Copies of photo locations are sent to OpenStreetMap matching services.
+provider = "osm"
+photos_only = true
+max_visits = 3
+# Change both dates to the short range you want to review (up to 31 days).
+since = "2026-11-01"
+until = "2026-11-05"
+# Default runtime data lives in ~/Library/Application Support/beli-tool/.
+# db_path = "/your/private/folder/ledger.sqlite"
+# Optional legacy sources: photos_only = false, saved_dir = "/path/to/csvs"
+# Optional provider: provider = "google", google_places_api_key = "..."

@@ -30,7 +30,7 @@ def build_queue(
         m = match_maps_place(raw, client)
         if m.status == "no_match":
             q.review.append(m)
-        elif m.status == "confident" and m.match and m.match.place_id in handled:
+        elif raw.source != "photos" and m.status == "confident" and m.match and m.match.place_id in handled:
             pass  # already handled: skip, but still count toward progress
         else:
             # confident-and-unhandled, or ambiguous: the latter has no .match
@@ -44,7 +44,7 @@ def build_queue(
         m = match_photo_cluster(raw, client)
         if m.status == "no_match":
             q.review.append(m)
-        elif m.status == "confident" and m.match and m.match.place_id in handled:
+        elif raw.source != "photos" and m.status == "confident" and m.match and m.match.place_id in handled:
             pass  # already handled: skip, but still count toward progress
         else:
             q.been.append(m)

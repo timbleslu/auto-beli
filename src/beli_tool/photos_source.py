@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime
+from pathlib import Path
 from typing import Protocol
 
 from beli_tool.clustering import PhotoPoint
@@ -23,17 +24,22 @@ class OsxPhotosSource:
     entire library and every old visit costs another Places lookup.
     """
 
-    def __init__(self, since: date | None = None, on_progress=None) -> None:
+    def __init__(self, since: date | None = None, on_progress=None, until: date | None = None, library_path: str | Path | None = None) -> None:
         self._db = None
+        self._library_path = library_path
         self._by_uuid: dict = {}
         self._since = since
+        self._until = until
         self._on_progress = on_progress
 
     def _get_db(self):
         if self._db is None:
             import osxphotos
 
-            self._db = osxphotos.PhotosDB()
+            if self._library_path is not None:
+                self._db = osxphotos.PhotosDB(dbfile=str(self._library_path))
+            else:
+                self._db = osxphotos.PhotosDB()
         return self._db
 
     def probe(self) -> str | None:
@@ -54,7 +60,10 @@ class OsxPhotosSource:
         kwargs = {}
         if self._since is not None:
             kwargs["from_date"] = datetime.combine(self._since, datetime.min.time())
+        if self._until is not None:
+            kwargs["to_date"] = datetime.combine(self._until, datetime.max.time())
         out: list[PhotoPoint] = []
+        self._by_uuid.clear()
         for i, p in enumerate(db.photos(**kwargs), 1):
             if self._on_progress and i % 500 == 0:
                 self._on_progress(i)
@@ -77,5 +86,12 @@ class OsxPhotosSource:
         if derivatives:
             return min(derivatives, key=os.path.getsize)
         if p.path and os.path.exists(p.path):
+            return p.path
+        return None
+
+    def original_path(self, uuid: str) -> str | None:
+        """Local full-size original only. Never substitutes a thumbnail or downloads."""
+        p = self._by_uuid.get(uuid)
+        if p is not None and p.path and os.path.isfile(p.path):
             return p.path
         return None

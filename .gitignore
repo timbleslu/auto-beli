@@ -11,3 +11,27 @@ Beli-Staging.zip
 *.egg-info/
 build/
 dist/
+
+# Private runtime state, exports, device captures, credentials and backups
+*.sqlite*
+*.db
+*.db-*
+*.bak
+*.log*
+.env*
+*.pem
+*.key
+*.p12
+*.mobileprovision
+private/
+exports/
+artifacts/
+playwright-report/
+test-results/
+node_modules/
+.appium/
+*.worker.lock
+*.crt
+*.csr
+*.srl
+Beli-Staging*.zip

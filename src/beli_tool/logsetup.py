@@ -23,12 +23,15 @@ def setup_logging(path: str | Path, level: int = logging.INFO) -> Path | None:
     """
     path = Path(path).expanduser()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         handler = logging.handlers.RotatingFileHandler(
             path, maxBytes=_MAX_BYTES, backupCount=_BACKUPS, encoding="utf-8"
         )
     except OSError:
         return None
+    for private_file in path.parent.glob(path.name + "*"):
+        if private_file.is_file():
+            private_file.chmod(0o600)
     handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     )

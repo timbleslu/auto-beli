@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tomllib
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 DEFAULT_HOME = Path.home() / "Library" / "Application Support" / "beli-tool"
@@ -13,18 +13,19 @@ _TEMPLATE = """\
 # Matching provider: "google" (Places API (New), needs the key below plus a
 # billing account) or "osm" (OpenStreetMap via Overpass + Nominatim: free, no
 # key, no billing; coverage is thinner, so more visits land in review).
-provider = "google"
-google_places_api_key = "PASTE_YOUR_KEY_HERE"
+provider = "osm"
+photos_only = true
 # Folder holding your Google Takeout "Saved/*.csv" lists.
 saved_dir = "{home}/inbox"
 db_path = "{home}/ledger.sqlite"
 # Cap on how many photo "visits" (most recent first) to match per run.
 # Each visit is one lookup (billed on "google", free on "osm"); raise this to
 # process more backlog.
-max_visits = 300
+max_visits = 3
 # Ignore photos taken before this date. Keeps the library scan bounded —
 # without it every run walks your entire Photos history.
-# since = "2024-01-01"
+since = "{since}"
+until = "{until}"
 # Optional: mirror every place you add into an Obsidian note, as a running
 # history. The note is created on first write. Leave unset to skip entirely.
 # An iCloud vault lives under the path shape below — swap in your vault name.
@@ -37,10 +38,13 @@ class Config:
     api_key: str
     saved_dir: Path
     db_path: Path
-    provider: str = "google"
-    max_visits: int = 300
+    provider: str = "osm"
+    max_visits: int = 3
     since: date | None = None
     obsidian_log: Path | None = None
+    photos_only: bool = True
+    until: date | None = None
+    photos_library: Path | None = None
 
 
 def _seed_home() -> Path:
@@ -50,11 +54,13 @@ def _seed_home() -> Path:
     self-explaining file to edit, not a bare error pointing at a folder that
     was never created.
     """
-    DEFAULT_HOME.mkdir(parents=True, exist_ok=True)
+    DEFAULT_HOME.mkdir(parents=True, exist_ok=True, mode=0o700)
+    DEFAULT_HOME.chmod(0o700)
     (DEFAULT_HOME / "inbox").mkdir(exist_ok=True)
     cfg_path = DEFAULT_HOME / "config.toml"
     if not cfg_path.exists():
-        cfg_path.write_text(_TEMPLATE.format(home=DEFAULT_HOME))
+        cfg_path.write_text(_TEMPLATE.format(home=DEFAULT_HOME, since=date.today()-timedelta(days=7), until=date.today()))
+        cfg_path.chmod(0o600)
     return cfg_path
 
 
@@ -66,7 +72,7 @@ def load_config(path: str | Path | None = None) -> Config:
     data: dict = {}
     if path.exists():
         data = tomllib.load(path.open("rb"))
-    provider = str(data.get("provider", "google")).lower()
+    provider = str(data.get("provider", "google" if data.get("google_places_api_key") else "osm")).lower()
     if provider not in ("google", "osm"):
         raise RuntimeError(
             f'config: provider must be "google" or "osm", got "{provider}" in {path}'
@@ -81,14 +87,22 @@ def load_config(path: str | Path | None = None) -> Config:
         )
     saved_dir = Path(data.get("saved_dir", DEFAULT_HOME / "inbox")).expanduser()
     db_path = Path(data.get("db_path", DEFAULT_HOME / "ledger.sqlite")).expanduser()
-    max_visits = int(data.get("max_visits", 300))
-    raw_since = data.get("since")
+    max_visits = int(data.get("max_visits", 3))
+    if not 1 <= max_visits <= 20:
+        raise RuntimeError("max_visits must be between 1 and 20 for a bounded trial")
+    raw_since = data.get("since", date.today()-timedelta(days=7))
     # tomllib gives a real date for an unquoted TOML date; accept a quoted
     # "YYYY-MM-DD" too, since that's the easy thing to type.
     if isinstance(raw_since, str):
         since = date.fromisoformat(raw_since)
     else:
         since = raw_since
+    raw_until = data.get("until", date.today())
+    until = date.fromisoformat(raw_until) if isinstance(raw_until, str) else raw_until
+    if not isinstance(since, date) or not isinstance(until, date) or since > until:
+        raise RuntimeError("Provide valid since and until dates, in order")
+    if (until - since).days > 31:
+        raise RuntimeError("Start with a date range of at most 31 days")
     raw_log = data.get("obsidian_log")
     obsidian_log = Path(raw_log).expanduser() if raw_log else None
     return Config(
@@ -99,4 +113,7 @@ def load_config(path: str | Path | None = None) -> Config:
         max_visits=max_visits,
         since=since,
         obsidian_log=obsidian_log,
+        photos_only=bool(data.get("photos_only", True)),
+        until=until,
+        photos_library=Path(data["photos_library"]).expanduser() if data.get("photos_library") else None,
     )

@@ -1,187 +1,215 @@
 from __future__ import annotations
 
-import logging
 import threading
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from beli_tool import __version__
-from beli_tool.ledger import Ledger
-from beli_tool.models import MatchedPlace
 from beli_tool.pipeline import Queue
 from beli_tool.places_client import PlacesError
+from beli_tool.security import Sessions
+from beli_tool.worklist import Worklist, visit_id
 
-_INDEX = (Path(__file__).parent / "templates" / "index.html").read_text()
-log = logging.getLogger(__name__)
-
-
-class AddedReq(BaseModel):
-    place_id: str
-    name: str
-    bucket: str
-    rating: str | None = None
+_ROOT = Path(__file__).parent
+_INDEX = (_ROOT / 'templates/index.html').read_text()
+_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'"
 
 
-class SkipReq(BaseModel):
-    place_id: str
-    name: str = ""
-    bucket: str = ""
+class Strict(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+class Login(Strict):
+    code: str = Field(max_length=256)
+
+class Mapping(Strict):
+    visit_id: str = Field(max_length=64)
+    provider_id: str = Field(max_length=256)
+    photos: list[str] = Field(max_length=6)
+
+class Batch(Strict):
+    mappings: list[Mapping] = Field(max_length=20)
+
+class Control(Strict):
+    action: str
+
+class Manual(Strict):
+    visit_id: str
+    action: str
+    photo: str | None = None
+    name: str | None = None
+    address: str | None = None
 
 
-def _serialize(m: MatchedPlace) -> dict:
-    vd = m.raw.visit_date.isoformat() if m.raw.visit_date else None
-    return {
-        "place_id": m.match.place_id if m.match else None,
-        "name": m.match.name if m.match else None,
-        "address": m.match.address if m.match else None,
-        "raw_name": m.raw.name,  # search string for unmatched cards (match is None)
-        "source": m.raw.source,
-        "bucket": m.bucket,
-        "status": m.status,
-        "visit_date": vd,
-        "photo_count": m.raw.photo_count,
-        "photo_ref": m.raw.photo_ref,
-        "photo_refs": m.raw.photo_refs,
-        "candidates": [
-            {"place_id": c.place_id, "name": c.name, "address": c.address}
-            for c in m.candidates
-        ],
-    }
+def _items(queue):
+    return queue.want_to_try + queue.been + queue.review
 
 
-def _lookup(queue: Queue, place_id: str) -> tuple[str, object]:
-    """Find (address, visit_date) for a place_id in the live queue.
+def _refs(item):
+    return item.raw.photo_refs or ([item.raw.photo_ref] if item.raw.photo_ref else [])
 
-    The client only posts place_id/name/bucket/rating, but the log wants the
-    address and visit date: they're already on the server, so read them here
-    rather than widening the request. Ambiguous cards resolve via candidates.
+
+def _serialize(item):
+    return {'visit_id': visit_id(item), 'source': item.raw.source,
+            'name': item.match.name if item.match else item.raw.name,
+            'visit_date': str(item.raw.visit_date or ''),
+            'photos': _refs(item), 'status': item.status,
+            'candidates': [c.model_dump() for c in ([item.match] if item.match else item.candidates)]}
+
+
+def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=None,
+               obsidian_log=None, origin='http://127.0.0.1:8000') -> FastAPI:
+    """Auth is mandatory, even with token=None. token is an optional pairing seed.
+
+    Only the public shell/static assets/login are unauthenticated. Private assets
+    must be members of the current queue or approved worklist. Legacy /added is
+    deliberately retired: a local ledger row cannot verify a Beli save.
     """
-    for items in (queue.want_to_try, queue.been, queue.review):
-        for m in items:
-            if m.match and m.match.place_id == place_id:
-                return m.match.address, m.raw.visit_date
-            for c in m.candidates:
-                if c.place_id == place_id:
-                    return c.address, m.raw.visit_date
-    return "", None
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    sessions = Sessions(origin, token)
+    app.state.pairing_code = sessions.pairing_code
+    app.state.sessions = sessions
+    work = Worklist(ledger)
+    state = {'queue': queue}
+    lock = threading.Lock()
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[sessions.host.split(':')[0]])
 
+    @app.middleware('http')
+    async def headers(request, call_next):
+        # Uvicorn proxy headers are disabled by both launchers. Never trust
+        # a LAN client's spoofed X-Forwarded-Proto or Host.
+        if request.headers.get('host') != sessions.host:
+            return Response(status_code=400)
+        if request.url.scheme != ('https' if sessions.secure else 'http'):
+            return Response(status_code=400)
+        response = await call_next(request)
+        response.headers.update({'Content-Security-Policy': _CSP,
+                                 'X-Content-Type-Options': 'nosniff',
+                                 'Referrer-Policy': 'no-referrer',
+                                 'Cache-Control': 'no-store',
+                                 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'})
+        if sessions.secure:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+        return response
 
-def _visible(items: list[MatchedPlace], handled: set[str]) -> list[dict]:
-    out = []
-    for m in items:
-        if m.match and m.match.place_id in handled:
-            continue
-        if m.candidates and any(c.place_id in handled for c in m.candidates):
-            continue
-        out.append(_serialize(m))
-    return out
+    @app.get('/', response_class=HTMLResponse)
+    def index():
+        return HTMLResponse(_INDEX)
 
+    @app.get('/static/{filename}')
+    def static(filename: str):
+        if filename not in ('app.js', 'app.css'):
+            raise HTTPException(404)
+        return FileResponse(_ROOT / 'static' / filename)
 
-def create_app(
-    queue: Queue,
-    ledger: Ledger,
-    photo_resolver=None,
-    token=None,
-    rebuild=None,
-    obsidian_log=None,
-) -> FastAPI:
-    """photo_resolver: optional callable (uuid -> filesystem path | None) used to
-    serve a card's photo thumbnail at /api/photo/{uuid}.
+    @app.post('/api/login')
+    def login(req: Login, request: Request):
+        sessions.same_origin(request)
+        value, csrf = sessions.login(req.code)
+        response = Response(content='{"ok":true}', media_type='application/json')
+        response.set_cookie(sessions.cookie, value, max_age=28800,
+                            secure=sessions.secure, httponly=True, samesite='strict', path='/')
+        return response
 
-    token: if set, every route requires it. Supplied as ``?t=<token>`` (in the
-    phone URL) or the ``beli_token`` cookie that opening that URL sets. Guards
-    the LAN server so a shared Wi-Fi neighbor can't read photos/location history.
-    token=None disables the check (tests, localhost dev).
+    @app.get('/api/session')
+    def session(csrf=Depends(sessions.guard)):
+        return {**work.snapshot(), 'csrf': csrf}
 
-    rebuild: optional callable returning a fresh Queue, exposed as POST
-    /api/rescan so new photos/CSVs can be picked up without quitting the app.
+    @app.post('/api/logout')
+    def logout(request: Request, csrf=Depends(sessions.guard)):
+        with sessions.lock:
+            sessions.sessions.pop(request.cookies.get(sessions.cookie), None)
+        response = Response(content='{"ok":true}', media_type='application/json')
+        response.delete_cookie(sessions.cookie, secure=sessions.secure, httponly=True, samesite='strict')
+        return response
 
-    obsidian_log: optional ObsidianLog; each added place is mirrored to a vault
-    note. Best-effort: a vault write must never fail the ledger write.
-    """
-    app = FastAPI()
-    # The live queue is swapped wholesale by a rescan, so route handlers read
-    # through this holder rather than closing over the original object.
-    state = {"queue": queue}
-    rescan_lock = threading.Lock()
+    @app.get('/api/queue')
+    def get_queue(csrf=Depends(sessions.guard)):
+        # Do not hide ambiguous visits because another candidate was handled.
+        # Legacy records are visible for explicit reconciliation, never promoted
+        # to machine verification and never used as new Beli identities.
+        return {'version': __version__, 'can_rescan': rebuild is not None,
+                'visits': [{**_serialize(m),
+                            'legacy_record': bool(m.match and ledger.is_handled(m.match.place_id))}
+                           for m in _items(state['queue'])]}
 
-    def guard(request: Request) -> None:
-        if token is None:
-            return
-        supplied = request.query_params.get("t") or request.cookies.get("beli_token")
-        if supplied != token:
-            raise HTTPException(status_code=403, detail="bad or missing token")
-
-    @app.get("/", response_class=HTMLResponse)
-    def index(request: Request):
-        guard(request)  # first load must carry ?t=; then the cookie takes over
-        resp = HTMLResponse(_INDEX)
-        if token is not None:
-            resp.set_cookie("beli_token", token, httponly=True, samesite="lax")
-        return resp
-
-    @app.get("/api/photo/{uuid}")
-    def photo(uuid: str, _=Depends(guard)):
+    @app.get('/api/photo/{uuid}')
+    def photo(uuid: str, csrf=Depends(sessions.guard)):
+        allowed = {r for m in _items(state['queue']) for r in _refs(m)}
+        allowed.update(r for v in work.snapshot()['visits'] for r in v['photos'])
+        if uuid not in allowed:
+            raise HTTPException(404)
         path = photo_resolver(uuid) if photo_resolver else None
         if not path:
-            return Response(status_code=404)
-        return FileResponse(path)
+            raise HTTPException(404)
+        path = Path(path)
+        types = {'.jpg': ('image/jpeg', b'\xff\xd8\xff'),
+                 '.jpeg': ('image/jpeg', b'\xff\xd8\xff'),
+                 '.png': ('image/png', b'\x89PNG\r\n\x1a\n')}
+        media = types.get(path.suffix.lower())
+        if not media or not path.is_file():
+            raise HTTPException(404, 'Preview unavailable; check the original in Photos')
+        with path.open('rb') as f:
+            if not f.read(8).startswith(media[1]):
+                raise HTTPException(404)
+        return FileResponse(path, media_type=media[0])
 
-    @app.get("/api/queue")
-    def get_queue(_=Depends(guard)) -> dict:
-        handled = ledger.handled_ids()
-        q = state["queue"]
-        return {
-            "version": __version__,
-            "can_rescan": rebuild is not None,
-            "want_to_try": _visible(q.want_to_try, handled),
-            "been": _visible(q.been, handled),
-            "review": _visible(q.review, handled),
-        }
-
-    @app.post("/api/rescan")
-    def rescan(_=Depends(guard)) -> dict:
-        if rebuild is None:
-            raise HTTPException(status_code=501, detail="rescan unavailable")
-        # Non-blocking: a double-tap must not run two scans at once. They'd
-        # race on the shared photo source's uuid index.
-        if not rescan_lock.acquire(blocking=False):
-            log.info("rescan rejected: one already running")
-            raise HTTPException(status_code=409, detail="a rescan is already running")
+    @app.post('/api/approve')
+    def approve(req: Batch, csrf=Depends(sessions.guard)):
+        by_id = {visit_id(m): m for m in _items(state['queue'])}
+        mappings = []
+        for selection in req.mappings:
+            m = by_id.get(selection.visit_id)
+            if not m:
+                raise HTTPException(409, 'Visit changed; rescan and review again')
+            candidates = [m.match] if m.match else m.candidates
+            candidate = next((c for c in candidates if c.place_id == selection.provider_id), None)
+            if not candidate or len(set(selection.photos)) != len(selection.photos) or not set(selection.photos) <= set(_refs(m)):
+                raise HTTPException(400, 'Approve only suggested restaurant and photo mappings')
+            mappings.append({'visit_id': selection.visit_id, 'provider_id': candidate.place_id,
+                             'name': candidate.name, 'address': candidate.address,
+                             'source': m.raw.source, 'visit_date': str(m.raw.visit_date or ''),
+                             'photos': selection.photos})
         try:
-            log.info("rescan requested")
-            state["queue"] = rebuild()
+            work.approve(mappings)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        return {'ok': True}
+
+    @app.post('/api/control')
+    def control(req: Control, csrf=Depends(sessions.guard)):
+        try:
+            work.control(req.action)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        return {'ok': True}
+
+    @app.post('/api/manual')
+    def manual(req: Manual, csrf=Depends(sessions.guard)):
+        try:
+            work.manual(req.visit_id, req.action, req.photo, req.name, req.address)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        return {'ok': True}
+
+    @app.post('/api/rescan')
+    def rescan(csrf=Depends(sessions.guard)):
+        if rebuild is None:
+            raise HTTPException(501, 'Rescan unavailable')
+        if work.snapshot()['status'] == 'running':
+            raise HTTPException(409, 'Pause before rescanning')
+        if not lock.acquire(blocking=False):
+            raise HTTPException(409, 'A rescan is already running')
+        try:
+            state['queue'] = rebuild()
         except PlacesError as e:
-            log.error("rescan failed: %s", e)
-            raise HTTPException(status_code=502, detail=str(e))
+            # Providers may include request details/coordinates in errors.
+            raise HTTPException(502, 'Matching failed. Try again later; private provider details were not logged.') from e
         finally:
-            rescan_lock.release()
-        return {"ok": True}
-
-    @app.post("/api/added")
-    def added(req: AddedReq, _=Depends(guard)) -> dict:
-        # Ledger first: it's the source of truth, the vault note is the mirror.
-        ledger.mark_added(req.place_id, req.name, req.bucket, req.rating)
-        log.info(
-            "added: %s (%s) rating=%s id=%s",
-            req.name, req.bucket, req.rating or "-", req.place_id,
-        )
-        if obsidian_log is not None:
-            address, visit_date = _lookup(state["queue"], req.place_id)
-            if not obsidian_log.append(
-                req.name, req.bucket, req.rating, address=address, visit_date=visit_date
-            ):
-                # The add itself stands; only the mirror line was lost.
-                log.warning("obsidian log write failed for %s", req.name)
-        return {"ok": True}
-
-    @app.post("/api/skip")
-    def skip(req: SkipReq, _=Depends(guard)) -> dict:
-        ledger.mark_dismissed(req.place_id, req.name, req.bucket)
-        log.info("skipped: %s id=%s", req.name or "-", req.place_id)
-        return {"ok": True}
+            lock.release()
+        return {'ok': True}
 
     return app

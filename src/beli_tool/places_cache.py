@@ -21,7 +21,11 @@ class PlacesCache:
         # Same invariant as Ledger: every self.conn access MUST hold self._lock.
         self._lock = threading.Lock()
         self._ttl_days = ttl_days
+        if str(db_path) != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        if str(db_path) != ":memory:":
+            Path(db_path).chmod(0o600)
         with self._lock:
             self.conn.execute(
                 """CREATE TABLE IF NOT EXISTS places_cache (

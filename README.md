@@ -1,62 +1,37 @@
-# Beli staging tool
+# Photos → Beli assistant (work in progress)
 
-Aggregates Google Maps saved lists (→ Want to Try) and GPS-stamped photos
-(→ Been) into a phone-friendly worklist for fast manual entry into Beli.
-Matching uses each photo's embedded GPS coordinate (not image content) via the
-Google Places API (New), or for free via OpenStreetMap: set `provider = "osm"`
-in `config.toml` and matching goes through Overpass + Nominatim instead, with
-no API key and no billing account (coverage is thinner, so more places land in
-the review queue). A local SQLite ledger keeps it incremental (each run
-shows only places you haven't handled yet), and lookup responses are cached in
-the same file, so re-runs don't re-query (or re-pay for) what was already
-answered.
+This fork is being converted into a Photos-only assistant. The secure review interface,
+batch approvals, persistent manual worklist, and approved-original exporter are implemented.
+**Automatic Beli navigation, iPhone picker selection and saved-result verification are not implemented or validated yet.**
+Do not use this as an unattended uploader.
 
-Set `since` in `config.toml` to bound how far back the Photos scan reaches;
-without it, every run walks your whole library. Set `obsidian_log` to mirror
-every add into an Obsidian note as a running history. Every run appends to
-`~/Library/Application Support/beli-tool/beli-tool.log`. The .app has no
-console, so that file is the record of what it did.
+Start with [RUN-ME.md](RUN-ME.md). See [SECURITY.md](SECURITY.md) for the threat model,
+[DEVICE-TRIAL.md](DEVICE-TRIAL.md) for the real-device acceptance gate, and
+[TEST-RESULTS.md](TEST-RESULTS.md) for actual test evidence and limitations.
 
-## Install
+New installations use Apple Photos only, OpenStreetMap, a seven-day range and three visits.
+No Google Takeout, CSV, Google key or billing account is needed. Matching sends coordinates
+to external OSM services. Restaurant suggestions always require your approval.
 
-**As an app (no terminal):** download from the
-[release page](https://kristenharim.github.io/beli-tool/), unzip, and drag
-**Beli Staging.app** to Applications. First launch: right-click → Open (it's
-unsigned). Double-clicking it runs the same thing as `beli-tool run` below and
-shows the phone URL in a dialog.
+Old `handled` completion rows remain intact. They are local records, not evidence that
+Beli saved anything. New photo visits are shown for reconciliation even when an old
+Added row exists. New confirmations are stored separately and labeled `user_confirmed` /
+`user_finished`, never machine verified. No web endpoint can set verified results.
 
-**From source:** `python3 -m venv .venv && . .venv/bin/activate && pip install -e .`
+## Development
 
-## One-time setup
+Use Python 3.13 and uv 0.12.5. The tested macOS version is recorded in TEST-RESULTS.md.
 
-**→ [SETUP.md](SETUP.md)** walks the whole thing: the Gatekeeper first-open, the
-Full Disk Access grant (no prompt, you add it by hand), the Places API key and
-billing, the Takeout export, and a troubleshooting table.
+```sh
+uv sync --locked --extra dev
+uv run --locked playwright install chromium
+uv run --locked pytest -q
+```
 
-First run creates `~/Library/Application Support/beli-tool/` with a template
-`config.toml` and an `inbox/` folder, then tells you to add your key.
+Only synthetic photos and mocked providers are used in tests. Real-device operations
+require the separate trial gate and specific approved restaurant/photo selections.
+`device-tools/package-lock.json` locks the optional project-local Appium tools; see
+its README before running them. Installing those tools does not establish a Beli integration.
 
-> **Upgrading from 0.1.0?** Config and ledger moved to
-> `~/Library/Application Support/beli-tool/`. Copy your old `config.toml` and
-> `ledger.sqlite` in, or just paste your key into the new template. You'll only
-> lose the record of which places you'd already handled.
-
-## Building the .app yourself
-
-`pip install pyinstaller && pyinstaller beli-tool.spec --noconfirm` → `dist/Beli Staging.app`.
-Pushing a `v*` tag builds and publishes it via GitHub Actions (`.github/workflows/release.yml`).
-
-## Each run
-
-1. Export Google Takeout → "Maps (your places)"; unzip the `Saved/*.csv` files
-   into `~/Library/Application Support/beli-tool/inbox/`.
-2. `beli-tool run`
-3. Open the printed `http://<ip>:8000/?t=<token>` URL on your phone (same Wi-Fi).
-   The token in the URL keeps others on the network out; open the whole URL.
-4. Rank each Been place (😍/😐/😞), tap "Copy & open Beli", paste, add, then
-   tap "Added ✓". Tap through Want to Try the same way.
-
-**Rescan** (top right) re-reads photos and CSVs in place: no need to quit and
-reopen after dropping in a new export. Cached lookups make it cheap.
-
-The final tap into Beli is manual by design (Beli has no import/API).
+The original project is [kristenharim/beli-tool](https://github.com/kristenharim/beli-tool).
+All changes for this assistant belong to [timbleslu/auto-beli](https://github.com/timbleslu/auto-beli).

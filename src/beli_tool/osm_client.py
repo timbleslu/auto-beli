@@ -17,7 +17,7 @@ _OVERPASS_URLS = [
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 # All community-run servers with a roughly 1 request/second fair-use
 # policy. Nominatim also requires a real User-Agent naming the app.
-_USER_AGENT = f"beli-tool/{__version__} (github.com/kristenharim/beli-tool)"
+_USER_AGENT = f"beli-tool/{__version__} (github.com/timbleslu/auto-beli)"
 _MIN_INTERVAL_S = 1.0
 _MAX_RETRIES = 8
 

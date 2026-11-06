@@ -52,8 +52,8 @@ def scan(cfg: Config, photo_source, client, ledger: Ledger) -> Queue:
     """Collect from both sources and match them. Repeatable: /api/rescan calls
     this again on the same ledger and cache, so a rescan is cheap and picks up
     newly-added photos or CSVs without a restart."""
-    print("Reading Google Maps saved lists…", flush=True)
-    maps_places = collect_maps(cfg.saved_dir)
+    print("Photos-only: Maps import skipped." if cfg.photos_only else "Reading Google Maps saved lists…", flush=True)
+    maps_places = [] if cfg.photos_only else collect_maps(cfg.saved_dir)
     print(f"  {len(maps_places)} saved place(s) found.", flush=True)
 
     window = f" taken since {cfg.since}" if cfg.since else " (whole library — set `since` in config.toml to bound this)"
@@ -108,19 +108,19 @@ def scan(cfg: Config, photo_source, client, ledger: Ledger) -> Queue:
 
 
 def build_app_from_config(
-    cfg: Config, photo_source=None, client=None, token=None
+    cfg: Config, photo_source=None, client=None, token=None, origin="http://127.0.0.1:8000"
 ) -> tuple[FastAPI, Ledger]:
     photo_source = photo_source or OsxPhotosSource(
-        since=cfg.since,
+        since=cfg.since, until=cfg.until, library_path=cfg.photos_library,
         on_progress=lambda n: print(f"\r  scanned {n} photos…", end="", flush=True),
     )
+    ledger = Ledger(cfg.db_path)  # backup before cache/schema writes
     if client is None:
         cache = PlacesCache(cfg.db_path)
         if cfg.provider == "osm":
             client = OsmClient(cache=cache)
         else:
             client = PlacesClient(cfg.api_key, cache=cache)
-    ledger = Ledger(cfg.db_path)
 
     def rebuild() -> Queue:
         return scan(cfg, photo_source, client, ledger)
@@ -137,33 +137,73 @@ def build_app_from_config(
         token=token,
         rebuild=rebuild,
         obsidian_log=obsidian_log,
+        origin=origin,
     )
     return app, ledger
 
 
 def main(argv: list[str] | None = None) -> None:
-    argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] != "run":
-        print("usage: beli-tool run")
+    import argparse
+    import ipaddress
+    import os
+    from pathlib import Path
+    from beli_tool.runtime import InstanceLock
+
+    parser = argparse.ArgumentParser(description="Photos-only Beli review assistant")
+    parser.add_argument('command', choices=['run', 'doctor', 'export-approved'])
+    parser.add_argument('--config', type=Path)
+    parser.add_argument('--phone-host', help="Mac LAN IP; requires trusted TLS certificate and key")
+    parser.add_argument('--cert', type=Path)
+    parser.add_argument('--key', type=Path)
+    args = parser.parse_args(argv)
+    os.umask(0o077)
+    if args.command == 'doctor':
+        from beli_tool.device import doctor
+        doctor()
         return
-    logged_to = setup_logging(LOG_PATH)
-    log.info("--- beli-tool %s starting (cli) ---", __version__)
-    try:
-        cfg = load_config()
-    except RuntimeError as e:
-        log.error("config: %s", e)
-        raise
-    log.info("config: %s", describe(cfg))
-    token = secrets.token_urlsafe(8)
-    try:
-        app, _ = build_app_from_config(cfg, token=token)
-    except PlacesError as e:  # setup mistake: print the fix, not a traceback
-        log.error("places: %s", e)
-        print(f"\n{e}\n", file=sys.stderr)
-        if logged_to:
-            print(f"(logged to {logged_to})", file=sys.stderr)
-        raise SystemExit(1)
-    port = 8000
-    url = f"http://{local_ip()}:{port}/?t={token}"
-    print(f"\n  Beli staging ready → open  {url}  on your phone\n")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    cfg = load_config(args.config)
+    if args.command == 'export-approved':
+        from beli_tool.exports import export_approved
+        export_approved(cfg)
+        return
+    host = '127.0.0.1'
+    if args.phone_host:
+        address = ipaddress.ip_address(args.phone_host)
+        if address.version != 4 or not address.is_private or address.is_loopback or address.is_unspecified:
+            parser.error('--phone-host must be the Mac’s private LAN IPv4 address')
+        if not args.cert or not args.key:
+            parser.error('Phone access requires a trusted TLS certificate and private key; HTTP is refused')
+        if args.key.stat().st_mode & 0o077:
+            parser.error('Keep the TLS private key owner-only: chmod 600 on that key file')
+        # Validate the cert/key before accessing Photos or sending coordinates.
+        import ssl
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(str(args.cert), str(args.key))
+        host = args.phone_host
+    elif args.cert or args.key:
+        parser.error('--cert/--key are only used together with --phone-host')
+    origin = f"{'https' if args.phone_host else 'http'}://{host}:8000"
+    cfg.db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with InstanceLock(cfg.db_path.with_suffix('.worker.lock')):
+        setup_logging(cfg.db_path.parent / 'beli-tool.log')
+        print('Matching sends photo coordinates to the selected outside provider. This is not offline.')
+        try:
+            app, ledger = build_app_from_config(cfg, origin=origin)
+        except PlacesError:
+            print('Matching service unavailable. No private provider details were logged.', file=sys.stderr)
+            raise SystemExit(1)
+        except Exception:
+            print('Photos or local state could not be opened. Open Photos, check the selected library and Full Disk Access for the app running this command. No private error details were logged.', file=sys.stderr)
+            raise SystemExit(1)
+        print(f"Open {origin} on {'your iPhone' if args.phone_host else 'this Mac'}")
+        print(f"One-time pairing code (expires in 10 minutes): {app.state.pairing_code}")
+        print('No verified Beli device automation is active. Use manual review controls.')
+        print('Stop with Control-C. Progress stays in the local worklist.')
+        try:
+            uvicorn.run(app, host=host, port=8000, access_log=False, proxy_headers=False,
+                        ssl_certfile=str(args.cert) if args.cert else None,
+                        ssl_keyfile=str(args.key) if args.key else None,
+                        ssl_version=__import__('ssl').PROTOCOL_TLS_SERVER,
+                        log_level='warning')
+        finally:
+            ledger.conn.close()

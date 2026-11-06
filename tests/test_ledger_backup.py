@@ -1,4 +1,5 @@
 import sqlite3
+import pytest
 
 from beli_tool.ledger import Ledger
 
@@ -23,12 +24,13 @@ def test_in_memory_ledger_does_not_try_to_back_up():
     Ledger(":memory:")  # must not raise or write a ":memory:.bak" file
 
 
-def test_backup_failure_does_not_block_the_run(tmp_path, monkeypatch):
+def test_backup_failure_blocks_launch_without_losing_source(tmp_path, monkeypatch):
     db = tmp_path / "ledger.sqlite"
     Ledger(db).mark_added("p1", "Lilia", "been", None)
-
     def boom(*a, **kw):
         raise OSError("disk full")
-
-    monkeypatch.setattr("beli_tool.ledger.shutil.copy2", boom)
-    assert Ledger(db).is_handled("p1")  # opens fine despite the failed backup
+    monkeypatch.setattr("beli_tool.ledger.os.replace", boom)
+    with pytest.raises(OSError):
+        Ledger(db)
+    assert sqlite3.connect(db).execute("SELECT place_id FROM handled").fetchall() == [("p1",)]
+    assert not list(tmp_path.glob('.ledger-backup-*'))

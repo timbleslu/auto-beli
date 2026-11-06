@@ -1,33 +1,46 @@
 from __future__ import annotations
 
-import shutil
+import os
+import tempfile
 import sqlite3
 import threading
 from pathlib import Path
 
 
 def _backup(db_path: str | Path) -> None:
-    """Snapshot the previous run's state to <db>.bak before opening it.
-
-    This file is the entire memory of what's been handled: one bad "skip
-    selected" spree is otherwise unrecoverable.
-    """
-    if str(db_path) == ":memory:":
+    """Consistent SQLite snapshots; never overwrite the pre-assistant rollback."""
+    if str(db_path) == ':memory:':
         return
     src = Path(db_path)
     if src.exists():
-        try:
-            shutil.copy2(src, src.with_suffix(src.suffix + ".bak"))
-        except OSError:
-            pass  # a backup that fails must never block the actual run
+        src.chmod(0o600)
+        # SQLite backup includes committed WAL data, unlike copying the main file.
+        for dest in (src.with_suffix(src.suffix + '.bak'),
+                     src.with_suffix(src.suffix + '.pre-assistant.bak')):
+            if dest.name.endswith('.pre-assistant.bak') and dest.exists():
+                continue
+            descriptor, temp_name = tempfile.mkstemp(prefix='.ledger-backup-', dir=src.parent)
+            os.close(descriptor)
+            try:
+                with sqlite3.connect(str(src)) as source, sqlite3.connect(temp_name) as target:
+                    source.backup(target)
+                os.chmod(temp_name, 0o600)
+                os.replace(temp_name, dest)
+            finally:
+                if os.path.exists(temp_name):
+                    os.unlink(temp_name)
 
 
 class Ledger:
     def __init__(self, db_path: str | Path = ":memory:"):
+        if str(db_path) != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         _backup(db_path)
         # Invariant: every access to self.conn MUST hold self._lock (check_same_thread=False removes sqlite's own guard).
         self._lock = threading.Lock()
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        if str(db_path) != ":memory:":
+            Path(db_path).chmod(0o600)
         with self._lock:
             self.conn.execute(
                 """CREATE TABLE IF NOT EXISTS handled (

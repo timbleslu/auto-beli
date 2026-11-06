@@ -23,10 +23,10 @@ def test_build_queue_sorts_and_dedupes():
     assert [m.match.name for m in q.want_to_try] == ["Dhamaka"]
     assert [m.match.name for m in q.been] == ["Lilia"]
 
-    # mark the photo place handled -> disappears next build
+    # Legacy local Added is not proof of a Beli save; keep photo visits for reconciliation
     led.mark_added("b1", "Lilia", "been", "loved")
     q2 = build_queue(maps, photos, FakeClient(), led)
-    assert q2.been == []
+    assert len(q2.been) == 1
     assert [m.match.name for m in q2.want_to_try] == ["Dhamaka"]
 
 

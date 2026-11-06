@@ -11,7 +11,7 @@ VERSION = re.search(
 
 datas, binaries, hiddenimports = collect_all("osxphotos")
 hiddenimports += collect_submodules("uvicorn") + collect_submodules("photoscript")
-datas += [("src/beli_tool/templates", "beli_tool/templates")]
+datas += [("src/beli_tool/templates", "beli_tool/templates"), ("src/beli_tool/static", "beli_tool/static")]
 
 a = Analysis(
     ["packaging/app_entry.py"],
@@ -25,12 +25,12 @@ pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
-    name="Beli Staging", console=False,
+    name="Beli Staging", console=True,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="Beli Staging")
 app = BUNDLE(
     coll,
     name="Beli Staging.app",
-    bundle_identifier="com.kristenho.beli-tool",
+    bundle_identifier="com.timbleslu.auto-beli",
     info_plist={"LSUIElement": False, "CFBundleShortVersionString": VERSION},
 )
