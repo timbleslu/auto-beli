@@ -19,6 +19,14 @@ by name. If OSM lacks the restaurant, you may supply its full name and branch ad
 review; this remains separate from an observed Beli identity. Food labels and GPS are
 suggestions, not proof of a restaurant visit.
 
+A private, persistent Beli shortlist now provides the first candidate pool when loaded,
+with selectable 250 m–2 km ranges, branch-specific addresses, Photos name hints, distance
+ranges and separate Been/Want to Try labels. Matching the shortlist is local; extra OSM
+suggestions are opt-in while a list is loaded. List membership never proves a photo visit.
+Actual iPhone list capture is **not implemented or verified yet**; an empty list retains the
+existing OSM flow with an explicit status notice. No export or CSV is required for normal use.
+See RUN-ME.md and SAVED-PLACES.md for the pending device gate and local ingestion contract.
+
 Old `handled` completion rows remain intact. They are local records, not evidence that
 Beli saved anything. New photo visits are shown for reconciliation even when an old
 Added row exists. New confirmations are stored separately and labeled `user_confirmed` /

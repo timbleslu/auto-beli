@@ -94,3 +94,18 @@ Cached home venue names are not used as automatic business-name hints. All hints
 unverified and are rendered as text. Unicode normalization is used for query equivalence without
 interpolating names into executable selectors or handlers. USB readiness must come from a fresh
 Xcode observation, never a cached device JSON; the configured trial device must match.
+
+## Private Beli shortlist
+
+`assistant_saved_places` is an additive table in the backed-up private ledger. Existing
+completion tables are untouched. Local ingestion requires an authenticated session and CSRF;
+it accepts validated names/addresses, separate observed Beli identities, paired finite bounded
+coordinates and location provenance. It neither authenticates to Beli nor asserts a verified
+visit/identity/save. No unobserved reverse-engineered account API is introduced. Partial batches
+upsert without deleting old entries; repeated updates are idempotent. Approved work is immutable
+under catalog changes. Entries may become stale; every proposed branch needs review in Beli.
+
+Saved-only matching uses no outside service. Extra provider suggestions require explicit opt-in
+when the shortlist is nonempty. An empty catalog retains the prior external-provider flow with
+a visible notice. Names, evidence and list metadata are rendered with textContent, not HTML.
+Private lists belong in the local ledger, never source fixtures, screenshots or public logs.

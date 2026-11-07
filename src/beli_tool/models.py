@@ -27,6 +27,11 @@ class PlaceCandidate(BaseModel):
     address: str
     category: str
     distance_m: float | None = None
+    distance_max_m: float | None = None
+    candidate_source: Literal['provider', 'beli_saved'] = 'provider'
+    saved_list_status: Literal['been', 'want_to_try', 'unknown'] | None = None
+    beli_id: str | None = None
+    evidence: list[str] = Field(default_factory=list)
 
 
 class MatchedPlace(BaseModel):

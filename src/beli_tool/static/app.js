@@ -44,6 +44,9 @@ function checkbox(text) {
   label.append(input, document.createTextNode(' ' + text));
   return {label, input};
 }
+function matchingOptions() {
+  return {radius_m:Number($('saved-radius').value), include_external:$('include-external').checked};
+}
 const selections = new Map();
 let mappingDrafts = new Map();
 function card(item) {
@@ -58,12 +61,19 @@ function card(item) {
   const select = el('select'); select.setAttribute('aria-label', 'Restaurant and branch');
   const empty = el('option', 'Choose the correct name and address'); empty.value = ''; select.append(empty);
   for (const c of item.candidates) {
-    const distance = Number.isFinite(c.distance_m) ? ` (${Math.round(c.distance_m)} m from photos)` : '';
-    const option = el('option', c.name + ' — ' + c.address + distance); option.value = c.place_id; select.append(option);
+    const distance = Number.isFinite(c.distance_m) ? ` (${Math.round(c.distance_m)}${Number.isFinite(c.distance_max_m) && c.distance_max_m - c.distance_m > 1 ? '–' + Math.round(c.distance_max_m) : ''} m from photos)` : '';
+    const membership = c.candidate_source === 'beli_saved' ? ` [Beli shortlist: ${{been:'Been — check existing ranking', want_to_try:'Want to Try', unknown:'list status unknown'}[c.saved_list_status] || 'unknown'}]` : ' [External suggestion]';
+    const option = el('option', c.name + ' — ' + c.address + distance + membership); option.value = c.place_id; select.append(option);
   }
+  const evidence = el('p', null, 'hint');
+  const showEvidence = () => {
+    const candidate = item.candidates.find(c => c.place_id === select.value);
+    evidence.textContent = candidate ? (candidate.evidence || []).join('. ') : '';
+  };
+  select.addEventListener('change', showEvidence);
   if (!item.candidates.length) { include.input.disabled = true; card.append(el('p', 'No match. Leave pending and check this visit manually.')); }
   if (draft?.provider && item.candidates.some(c => c.place_id === draft.provider)) select.value = draft.provider;
-  card.append(select);
+  showEvidence(); card.append(select, evidence);
   card.append(el('p', `${item.photos.length} photos in this group — all shown below.`));
   const photos = new Map();
   for (const ref of item.photos) {
@@ -74,11 +84,13 @@ function card(item) {
   const noPhotos = checkbox('Continue without photos for this visit'); noPhotos.input.checked = Boolean(draft?.noPhotos); card.append(noPhotos.label);
   if (discoveryEnabled) {
     const tools = el('div', null, 'group-tools');
+    tools.append(button('Search this visit within chosen range', () =>
+      api('/api/discovery-match', {photos:item.photos, query:'', ...matchingOptions()})));
     const label = el('label', 'Wrong suggestions? Search restaurant name, city or address');
     const query = el('input'); query.type = 'text'; query.maxLength = 200; label.append(query);
     const search = button('Search this visit by name', async () => {
       if (!query.value.trim()) throw new Error('Enter a restaurant name with its city or address.');
-      await api('/api/discovery-match', {photos:item.photos, query:query.value.trim()});
+      await api('/api/discovery-match', {photos:item.photos, query:query.value.trim(), ...matchingOptions()});
     });
     query.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); search.click(); } });
     const manual = el('details');
@@ -106,6 +118,7 @@ function renderCurrent(session) {
   root.append(el('h2', 'Session: ' + session.status + ' (manual mode)'));
   if (!current) { root.append(el('p', 'No pending approved visits.')); return; }
   root.append(el('h3', current.name), el('p', current.address), el('p', current.visit_date));
+  if (current.saved_list_status === 'been') root.append(el('p', 'This branch was on your Been list. Check the existing ranking in Beli; do not rank it again just to attach photos. List membership alone does not confirm the ranking is still saved.', 'notice'));
   for (const ref of current.photos) root.append(image(ref));
   if (session.status !== 'running') { root.append(el('p', 'Start or resume to continue. No phone actions are running.')); return; }
   root.append(el('p', 'On your iPhone, open Beli and search for this name. Compare the branch address. Make every rating and comparison choice yourself.'));
@@ -157,6 +170,10 @@ async function load() {
 function renderDiscovery() {
   if (!discoveryData) return;
   const d = discoveryData;
+  const saved = d.saved_places || {count:0, located:0, been:0, want_to_try:0};
+  $('saved-list-status').textContent = saved.count ?
+    `Local Beli shortlist: ${saved.count} branches (${saved.located} with locations), ${saved.been} Been, ${saved.want_to_try} Want to Try. Not live-synced. Search uses this list first; approval is still required.` :
+    'Your Beli saved list is not loaded yet. Phone-list capture still needs device setup. Until then, searches use OSM; the wider saved-list range takes effect once your list is loaded.';
   $('discovery-stats').textContent = `${d.since} through ${d.until}: ${d.photos.length} images, ${d.likely_food} with food labels, ${d.without_gps} without GPS. All are available in these filters; the trial limit applies to visits, not photo discovery.`;
   const mode = $('photo-filter').value;
   const filtered = d.photos.filter(a => mode === 'all' || (mode === 'food' && a.likely_food) ||
@@ -194,9 +211,9 @@ $('match-photos').addEventListener('click', async () => {
   const photos = [...discoverySelected];
   if (!photos.length) return;
   const b = $('match-photos'); b.disabled = true;
-  message('Looking up this selected visit with OSM…');
+  message(discoveryData?.saved_places?.count ? 'Comparing this visit with your Beli shortlist…' : 'Beli shortlist not loaded; looking up this visit with OSM…');
   try {
-    await api('/api/discovery-match', {photos, query:$('restaurant-query').value.trim()});
+    await api('/api/discovery-match', {photos, query:$('restaurant-query').value.trim(), ...matchingOptions()});
     photos.forEach(id => discoverySelected.delete(id));
     $('restaurant-query').value = '';
     await load(); message('Visit ready for restaurant and photo approval below. Nothing was uploaded.');

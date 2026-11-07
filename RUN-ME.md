@@ -23,8 +23,9 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
    Use [config.example.toml](config.example.toml) as an example. A range may cover at most 31 days.
    For multiple libraries, set `photos_library = "~/Pictures/Photos Library.photoslibrary"`
    to your actual chosen library. No library or synchronization setting is changed by this tool.
-4. Read the privacy notice: matching sends GPS coordinates to OSM Overpass servers, or OSM Nominatim for incomplete bounded suggestions if Overpass fails.
-   Discovery is local; selected-visit matching is not fully offline. No photo pixels go to OSM.
+4. Read the privacy notice: discovery and matching against a loaded Beli shortlist stay local.
+   OSM fallback or explicitly requested extra suggestions send venue/city names and GPS to outside
+   OSM services. That part is not offline. No photo pixels go to OSM.
    A service outage can delay a lookup, but known Overpass outages are not retried for every
    photo group in the same batch. Cached lookups and saved groups survive restart.
 5. A Mac pairing dialog appears. Click Copy code; the local browser page opens. Paste
@@ -37,9 +38,16 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
    missing. Use All images, Other / unlabelled, or Without GPS to find omitted pictures.
    The inventory includes all visible still images in your chosen dates; hidden assets and videos
    are excluded. The three-visit limit does not truncate discovery.
-7. Select pictures from ONE visit. Click “Find restaurants for selected photos.” Existing
-   Photos venue/city hints are tried first; name searches are biased to the selected visit's
-   location. When those hints are absent/unhelpful, nearby suggestions remain available.
+7. Select pictures from ONE visit. Check the Beli shortlist status. With a loaded list, choose
+   a search range (250 m, 500 m, 1 km or 2 km; default 1 km), then click “Find restaurants for
+   selected photos.” Your saved branches are the first candidate pool. Existing Photos venue
+   names help order results; the full distance range from the selected photos is shown.
+   To widen an existing draft, change the range above and click “Search this visit within chosen
+   range” on its review card. Broader ranges tolerate GPS drift but include more unrelated branches. Saved membership
+   never proves you ate there. Been and Want to Try remain separate.
+   Without a loaded list, existing Photos venue/city hints and OSM are used instead.
+   To include outside restaurants with a loaded list, explicitly check “Also request OSM
+   suggestions outside my saved list.” Otherwise even an empty shortlist result stays local.
    The selected lookup can send venue/city names and GPS to OSM. Images stay local. If the photos
    have no usable venue/GPS hints, or suggestions are wrong, enter the restaurant name with city/address and
    request a name search. Groups spanning more than three hours must be split into separate visits.
@@ -64,6 +72,27 @@ Appium and WebDriverAgent are separate local USB tools; neither is a public web 
     correct restaurant, record its manual confirmation. “Done — next restaurant (manual confirmation)”
     refuses to advance while requested photos remain pending. You can explicitly finish without
     remaining photos. Skip is a skip, not successful completion.
+
+## Beli shortlist — phone connection still required
+
+The matching code and private persistent shortlist are implemented. Your real Beli list has
+NOT been captured, and no automatic list reader is enabled yet. The status line honestly shows
+an empty list until it is populated. You do not need Google Takeout or a CSV file. When the
+phone is available, the assistant must first inspect Beli's actual list controls and capture
+names, exact branch addresses and Been/Want to Try membership through an observed, tested
+read-only path. There is no reverse-engineered account API or assumed export format.
+
+A branch needs coordinates observed in Beli or confirmed for its exact address to use the
+wider radius. Never geocode a brand name and assume its first result is the right branch.
+Unlocated saved branches can still be suggested by an explicit name/address query or a
+matching Photos name hint, with “Distance unavailable.” Missing GPS does not offer your
+entire saved list automatically. Photo timestamps separate visits (maximum three hours);
+list membership is not a visit timestamp. A photo within range only makes a branch plausible.
+
+Draft matches require an explicit re-search to use new list data; approved photo mappings and
+completion records never change when the shortlist updates. A Been candidate remains ranking
+pending until the existing saved ranking is checked; do not rerank merely to attach photos.
+No photo is attached or Beli ranking changed by adding entries to the shortlist.
 
 ## Photos on the iPhone — prove one first
 

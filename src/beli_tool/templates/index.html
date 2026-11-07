@@ -9,11 +9,15 @@
 <section id="discovery" hidden>
 <h2>1. Choose photos from one visit</h2>
 <p id="discovery-stats"></p>
+<p id="saved-list-status" class="notice"></p>
 <p>Food labels are local suggestions, not proof of a meal. Check unlabelled photos too. Nothing is selected automatically. A requested lookup may send this visit’s venue/city hints and GPS to OSM. Images stay local.</p>
 <label>Show photos <select id="photo-filter"><option value="food">Likely food</option><option value="all">All images</option><option value="other">Other / unlabelled</option><option value="no-gps">Without GPS</option></select></label>
 <p id="discovery-count" role="status"></p>
 <div id="photo-grid" class="discovery-grid"></div>
 <label>Restaurant name, city or address (optional)<input id="restaurant-query" type="text" maxlength="200" placeholder="Use a name if GPS suggestions are wrong or missing"></label>
+<label>Search your Beli shortlist within <select id="saved-radius"><option value="250">250 metres</option><option value="500">500 metres</option><option value="1000" selected>1 kilometre</option><option value="2000">2 kilometres</option></select></label>
+<label><input id="include-external" type="checkbox"> Also request OSM suggestions outside my saved list</label>
+<p>The wider range applies to saved places with known locations. Saved places remain suggestions, not proof you visited. Been and Want to Try are kept separate. Photos and names remain local when only your shortlist is searched.</p>
 <button id="match-photos" type="button">Find restaurants for selected photos</button>
 <button id="clear-discovery" type="button">Clear photo selection</button>
 <p>This creates a review group, not an upload approval. Match up to three visits for the trial, then approve their restaurant/photo mappings together below.</p>

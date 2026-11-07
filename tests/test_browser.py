@@ -65,7 +65,7 @@ def test_dom_rendering_and_batch_approval_are_safe(browser,name,enforce_csp):
         page.get_by_role('button',name='Connect',exact=True).click()
         page.locator('#workspace').wait_for(state='visible')
         assert page.locator('#root h3').text_content()==name
-        assert page.locator('#root select option').nth(1).text_content()==name+' — '+name
+        assert page.locator('#root select option').nth(1).text_content()==name+' — '+name+' [External suggestion]'
         page.get_by_label('Include this visit in the batch').check()
         page.get_by_label('Restaurant and branch').select_option(PAYLOAD)
         page.get_by_label('Approve this photo').check()
@@ -181,5 +181,47 @@ def test_missing_osm_restaurant_can_be_supplied_without_false_verification(brows
         expect(page.locator('#worklist')).to_contain_text('ranking pending')
         assert len(provider.calls)==1  # user-supplied mapping made no provider request
         assert page.evaluate('globalThis.__xss === undefined')
+    finally:
+        page.close();server.should_exit=True;thread.join(timeout=5);sock.close()
+
+
+def test_beli_shortlist_radius_evidence_and_safe_text_without_external_calls(browser):
+    from test_discovery import Provider, discovery_app
+    from test_saved_places import photo, branch
+    from beli_tool.saved_places import SavedPlaces
+    ledger=Ledger();catalog=SavedPlaces(ledger)
+    entry=branch(name=PAYLOAD,list_status='been')
+    catalog.upsert([entry])
+    sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+    origin=f'http://127.0.0.1:{port}';provider=Provider()
+    app=discovery_app(ledger=ledger,photos=[photo()],provider=provider,origin=origin)
+    server=uvicorn.Server(uvicorn.Config(app,log_level='error',access_log=False,proxy_headers=False))
+    thread=threading.Thread(target=server.run,kwargs={'sockets':[sock]},daemon=True);thread.start()
+    deadline=time.monotonic()+5
+    while not server.started and time.monotonic()<deadline:time.sleep(.01)
+    assert server.started
+    page=browser.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+    try:
+        page.goto(origin);page.locator('#code').fill(app.state.pairing_code)
+        page.get_by_role('button',name='Connect',exact=True).click()
+        expect(page.locator('#saved-list-status')).to_contain_text('1 branches (1 with locations)')
+        expect(page.locator('#include-external')).not_to_be_checked()
+        page.locator('#saved-radius').select_option('500')
+        page.locator('#photo-grid input').first.check()
+        page.get_by_role('button',name='Find restaurants for selected photos').click()
+        expect(page.locator('#message')).to_contain_text('Visit ready')
+        expect(page.get_by_label('Include this visit in the batch')).to_be_disabled()
+        page.locator('#saved-radius').select_option('1000')
+        page.get_by_role('button',name='Search this visit within chosen range').click()
+        expect(page.get_by_label('Restaurant and branch').locator('option')).to_have_count(2)
+        expect(page.get_by_label('Restaurant and branch')).to_contain_text(PAYLOAD)
+        expect(page.get_by_label('Restaurant and branch')).to_contain_text('Been — check existing ranking')
+        page.get_by_label('Restaurant and branch').select_option(entry.key)
+        expect(page.locator('#root')).to_contain_text('Already on Been list')
+        assert not provider.calls
+        assert page.evaluate('globalThis.__xss === undefined') and not errors
+        page.reload()
+        expect(page.locator('#saved-list-status')).to_contain_text('1 branches')
+        expect(page.get_by_label('Restaurant and branch')).to_contain_text(PAYLOAD)
     finally:
         page.close();server.should_exit=True;thread.join(timeout=5);sock.close()

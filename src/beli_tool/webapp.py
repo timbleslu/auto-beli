@@ -12,6 +12,7 @@ from beli_tool import __version__
 from beli_tool.pipeline import Queue
 from beli_tool.places_client import PlacesError
 from beli_tool.security import Sessions
+from beli_tool.saved_places import SavedPlace, SavedPlaces, match_saved_selection
 from beli_tool.worklist import Worklist, visit_id
 
 _ROOT = Path(__file__).parent
@@ -36,6 +37,11 @@ class Batch(Strict):
 class DiscoverReq(Strict):
     photos: list[str] = Field(min_length=1, max_length=100)
     query: str = Field(default='', max_length=200)
+    radius_m: int = Field(default=1000)
+    include_external: bool = False
+
+class SavedBatch(Strict):
+    entries: list[SavedPlace] = Field(min_length=1, max_length=500)
 
 class UserRestaurantReq(Strict):
     photos: list[str] = Field(min_length=1, max_length=100)
@@ -86,6 +92,7 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
     app.state.pairing_code = sessions.pairing_code
     app.state.sessions = sessions
     work = Worklist(ledger)
+    saved_places = SavedPlaces(ledger)
     def selected_queue():
         matches = work.matches()
         if window:
@@ -187,8 +194,29 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
         return {'photos':[a.public() for a in assets],
                 'since':str(window[0]) if window else '', 'until':str(window[1]) if window else '',
                 'max_groups':max_groups,
+                'saved_places':saved_places.summary(),
                 'likely_food':sum(a.food for a in assets),
                 'without_gps':sum(a.lat is None or a.lon is None for a in assets)}
+
+    @app.get('/api/saved-places')
+    def saved_list(csrf=Depends(sessions.guard)):
+        return {**saved_places.summary(), 'entries':[e.model_dump() for e in saved_places.entries()]}
+
+    @app.post('/api/saved-places')
+    def save_list(req: SavedBatch, csrf=Depends(sessions.guard)):
+        # Local ingestion seam for a later observed phone-list capture. This does
+        # not assert live sync, verified identity, visit or photo approval.
+        if not lock.acquire(blocking=False):
+            raise HTTPException(409, 'Another matching operation is running')
+        try:
+            if work.snapshot()['status'] == 'running':
+                raise HTTPException(409, 'Pause before updating your saved shortlist')
+            saved_places.upsert(req.entries)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        finally:
+            lock.release()
+        return saved_places.summary()
 
     def update_group(photos, make_match):
         if discovery is None:
@@ -222,7 +250,30 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
     def discover_match(req: DiscoverReq, csrf=Depends(sessions.guard)):
         if match_photos is None:
             raise HTTPException(404)
-        return update_group(req.photos, lambda: match_photos(req.photos, req.query))
+        if req.radius_m not in (250, 500, 1000, 2000):
+            raise HTTPException(422, 'Choose a search distance of 250, 500, 1000 or 2000 metres')
+        def find():
+            entries = saved_places.entries()
+            if not entries:
+                item = match_photos(req.photos, req.query)
+                item.match_note = 'Your Beli shortlist is not loaded yet; these are external-provider suggestions. ' + (item.match_note or '')
+                return item
+            local = match_saved_selection(discovery(), req.photos, entries, req.query, req.radius_m)
+            if req.include_external:
+                try:
+                    external = match_photos(req.photos, req.query)
+                except (PlacesError, ValueError):
+                    # A provider outage/missing GPS must not discard saved matches.
+                    local.match_note = local.match_note.replace('No external lookup was made.',
+                        'External suggestions were requested but unavailable; saved-list results retained.')
+                    return local
+                # Catalog and provider identities intentionally remain distinct.
+                local.candidates.extend(external.candidates or ([external.match] if external.match else []))
+                local.status = 'ambiguous' if local.candidates else 'no_match'
+                local.match_note = local.match_note.replace('No external lookup was made.',
+                    'You requested extra external-provider suggestions; visit hints/GPS may have been sent.')
+            return local
+        return update_group(req.photos, find)
 
     @app.post('/api/user-restaurant')
     def supplied_restaurant(req: UserRestaurantReq, csrf=Depends(sessions.guard)):
@@ -258,6 +309,9 @@ def create_app(queue: Queue, ledger, photo_resolver=None, token=None, rebuild=No
             if not candidate or len(set(selection.photos)) != len(selection.photos) or not set(selection.photos) <= set(_refs(m)):
                 raise HTTPException(400, 'Approve only suggested restaurant and photo mappings')
             mappings.append({'visit_id': selection.visit_id, 'provider_id': candidate.place_id,
+                             'candidate_source':candidate.candidate_source,
+                             'saved_list_status':candidate.saved_list_status,
+                             'observed_beli_id':candidate.beli_id,
                              'name': candidate.name, 'address': candidate.address,
                              'source': m.raw.source, 'visit_date': str(m.raw.visit_date or ''),
                              'photos': selection.photos})

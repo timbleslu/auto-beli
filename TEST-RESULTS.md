@@ -31,12 +31,12 @@ Only origin exists, and both its URLs point to timbleslu/auto-beli.
 ## Checks completed
 
 - Before changes: original 110 tests passed.
-- Updated non-browser tests: 131 passed. Authentication, CSRF, queue validation, atomic
+- Updated non-browser tests: 148 passed. Authentication, CSRF, queue validation, atomic
   approval, manual status distinctions, partial-photo persistence, restart/pause/stop,
   explicit photo waiver, separate visits, exclusive process lock, legacy migration,
   private backups, metadata stripping and thumbnail rejection are covered.
-- Full current Python suite: **141 passed**, one upstream test-client deprecation warning.
-- Real Chromium 156.0.8078.4 via Playwright 1.64.1: 9 tests passed. Includes isolated
+- Full current Python suite: **159 passed**, one upstream test-client deprecation warning.
+- Real Chromium 156.0.8078.4 via Playwright 1.64.1: 10 tests passed. Includes isolated
   reproduction of the exact old entity-decoding XSS, followed by secure DOM rendering
   and batch/manual-flow tests with CSP ON and OFF, malicious strings, punctuation and Unicode.
 - Real TLS test: 1 passed. A temporary private CA validates the server; an untrusted
@@ -82,9 +82,21 @@ One upstream FastAPI/Starlette test-client deprecation warning remains. It is no
 vulnerability finding. Reproducible source locking does not imply bit-identical .app
 binaries across different SDKs or operating systems.
 
+## Saved-list matching update
+
+Synthetic Beli shortlist tests cover 500 m rejection/1 km inclusion, overlapping same-name
+branches, Unicode name-hint ordering, missing GPS/location, explicit corrected addresses,
+GPS drift and full distance ranges, scattered/multiple visits, invalid locations, and separate
+Been/Want to Try metadata. Catalog ingestion is authenticated/CSRF protected and atomic;
+idempotent updates persist across restarts without changing approved work or legacy records.
+Backups/rollback are checked. Catalog-only matching makes no provider calls, even on misses;
+explicit extra-provider requests retain local candidates on failure. A real Chromium test
+exercises wider-radius controls, pending matches, Been warnings, safe injected text, and reload.
+The new code has NOT read a real Beli saved list. No phone/account write or upload occurred.
+
 ## Not tested or implemented
 
-Beli restaurant-specific navigation (beyond the observed Search button); physical rating pause/resume; positive ranking save
+Actual Beli saved-list capture/location acquisition; Beli restaurant-specific navigation (beyond the observed Search button); physical rating pause/resume; positive ranking save
 recognition; photo picker selection; transfer/import; saved-photo detection; automatic
 multi-restaurant advancement; real upload failure/uncertainty/duplicate reconciliation;
 real already-ranked handling; real branch selection; phone disconnect recovery;
